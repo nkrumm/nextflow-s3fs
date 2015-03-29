@@ -582,11 +582,6 @@ public class FilesOperationsIT {
 
 		Path path = fileSystemAmazon.getPath(bucket, "/");
 		BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-		System.out.printf("size    : %s\n", attrs.size());
-		System.out.printf("create  : %s\n", attrs.creationTime());
-		System.out.printf("access  : %s\n", attrs.lastAccessTime());
-		System.out.printf("modified: %s\n", attrs.lastModifiedTime());
-		System.out.printf("dir     : %s\n", Files.isDirectory(path));
 		assertEquals(0, attrs.size());
 		assertEquals(null, attrs.creationTime());
 		assertEquals(null, attrs.lastAccessTime());
@@ -609,9 +604,9 @@ public class FilesOperationsIT {
 		Files.createFile(file2);
 
 		List<Path> list = fileList(root);
-		assertTrue( list.contains(dir1) );
-		assertTrue( list.contains(file1) );
-		assertTrue( list.contains(file2) );
+		assertTrue(list.contains(dir1));
+		assertTrue(list.contains(file1));
+		assertTrue(list.contains(file2));
 		assertFalse(list.contains(file3));
 	}
 
