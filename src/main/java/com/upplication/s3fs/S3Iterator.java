@@ -78,6 +78,7 @@ public class S3Iterator implements Iterator<Path> {
         request.setBucketName(bucket);
         request.setPrefix(key);
         request.setMarker(key);
+        request.setDelimiter("/");
         return request;
     }
 
@@ -87,18 +88,17 @@ public class S3Iterator implements Iterator<Path> {
      * @param current ObjectListing to walk
      */
     private void parseObjectListing(List<S3Path> listPath, ObjectListing current) {
+        // add all the common prefixes i.e. the directories
+        for(final String dir : current.getCommonPrefixes()) {
+            listPath.add(new S3Path(s3FileSystem, "/" + bucket, dir));
+        }
+
+        // add all the objects i.e. the files
         for (final S3ObjectSummary objectSummary : current.getObjectSummaries()) {
             final String objectSummaryKey = objectSummary.getKey();
-            // we only want the first level
-            String key = getInmediateDescendent(this.key, objectSummaryKey);
-            if (key != null){
-                S3Path descendentPart = new S3Path(s3FileSystem, "/" + objectSummary.getBucketName(), key.split("/"));
-
-                if (!listPath.contains(descendentPart)){
-                    listPath.add(descendentPart);
-                }
-            }
+            listPath.add(new S3Path(s3FileSystem, "/" + bucket, objectSummaryKey.split("/")));
         }
+
     }
 
     /**
@@ -110,6 +110,7 @@ public class S3Iterator implements Iterator<Path> {
      * @return String parsed
      *  or null when the keyChild and keyParent are the same and not have to be returned
      */
+    @Deprecated
     private String getInmediateDescendent(String keyParent, String keyChild){
 
         keyParent = deleteExtraPath(keyParent);
@@ -130,6 +131,7 @@ public class S3Iterator implements Iterator<Path> {
 
     }
 
+    @Deprecated
     private String deleteExtraPath(String keyChild) {
         if (keyChild.startsWith("/")){
             keyChild = keyChild.substring(1);
