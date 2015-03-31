@@ -51,8 +51,6 @@ public class S3Iterator implements Iterator<Path> {
     private Iterator<S3Path> getIterator() {
         if (it == null) {
             List<S3Path> listPath = new ArrayList<>();
-            // TODO: need revision for better performance!
-            // this request load objects that start with the key at all levels
 
             // iterator over this list
             ObjectListing current = s3FileSystem.getClient().listObjects(buildRequest());
@@ -88,15 +86,18 @@ public class S3Iterator implements Iterator<Path> {
      * @param current ObjectListing to walk
      */
     private void parseObjectListing(List<S3Path> listPath, ObjectListing current) {
-        // add all the common prefixes i.e. the directories
-        for(final String dir : current.getCommonPrefixes()) {
-            listPath.add(new S3Path(s3FileSystem, "/" + bucket, dir));
-        }
 
         // add all the objects i.e. the files
         for (final S3ObjectSummary objectSummary : current.getObjectSummaries()) {
-            final String objectSummaryKey = objectSummary.getKey();
-            listPath.add(new S3Path(s3FileSystem, "/" + bucket, objectSummaryKey.split("/")));
+            final String key = objectSummary.getKey();
+            final S3Path path = new S3Path(s3FileSystem, "/" + bucket, key.split("/"));
+            path.setObjectSummary(objectSummary);
+            listPath.add(path);
+        }
+
+        // add all the common prefixes i.e. the directories
+        for(final String dir : current.getCommonPrefixes()) {
+            listPath.add(new S3Path(s3FileSystem, "/" + bucket, dir));
         }
 
     }
