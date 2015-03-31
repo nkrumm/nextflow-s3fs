@@ -44,6 +44,9 @@
 
 package com.upplication.s3fs.util;
 
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
@@ -66,38 +69,28 @@ public class S3ObjectSummaryLookup {
      */
     public S3ObjectSummary lookup(S3Path s3Path) throws NoSuchFileException {
 
-        AmazonS3Client client = s3Path.getFileSystem().getClient();
-
-        ObjectMetadata objectMetadata = getS3ObjectMetadata(s3Path);
-
-        if (objectMetadata != null) {
-            S3ObjectSummary result = new S3ObjectSummary();
-            result.setBucketName(s3Path.getBucket());
-            result.setETag(objectMetadata.getETag());
-            result.setKey(s3Path.getKey());
-            result.setLastModified(objectMetadata.getLastModified());
-            result.setSize(objectMetadata.getContentLength());
-
-            return result;
+        S3ObjectSummary summary = s3Path.fetchObjectSummary();
+        if( summary != null ) {
+            return summary;
         }
 
-        // is a virtual directory
-        String key = s3Path.getKey() + "/";
+        AmazonS3Client client = s3Path.getFileSystem().getClient();
 
         ListObjectsRequest request = new ListObjectsRequest();
         request.setBucketName(s3Path.getBucket());
-        request.setPrefix(key);
+        request.setPrefix(s3Path.getKey());
         request.setMaxKeys(1);
         ObjectListing current = client.listObjects(request);
 
         if (!current.getObjectSummaries().isEmpty()){
             return current.getObjectSummaries().get(0);
         }
-        else{
-            throw new NoSuchFileException(s3Path.toString());
+        else {
+            throw new NoSuchFileException("s3://" + s3Path.getBucket() + "/" + s3Path.toString());
         }
     }
 
+    @Deprecated
     public ObjectMetadata getS3ObjectMetadata(S3Path s3Path) {
         AmazonS3Client client = s3Path.getFileSystem().getClient();
         try {
