@@ -1,15 +1,19 @@
 package com.upplication.s3fs.util;
 
 import com.amazonaws.services.s3.model.*;
-import com.google.common.base.Throwables;
+
 import com.upplication.s3fs.AmazonS3Client;
 import com.upplication.s3fs.S3Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.NoSuchFileException;
 
 
 public class S3ObjectSummaryLookup {
+
+    private static final Logger log = LoggerFactory.getLogger(S3ObjectSummary.class);
 
     /**
      * Get the {@link com.amazonaws.services.s3.model.S3ObjectSummary} that represent this Path or her first child if this path not exists
@@ -19,13 +23,40 @@ public class S3ObjectSummaryLookup {
      */
     public S3ObjectSummary lookup(S3Path s3Path) throws NoSuchFileException {
 
+        /*
+         * check is object summary has been cached
+         */
         S3ObjectSummary summary = s3Path.fetchObjectSummary();
         if( summary != null ) {
             return summary;
         }
 
-        AmazonS3Client client = s3Path.getFileSystem().getClient();
+        final AmazonS3Client client = s3Path.getFileSystem().getClient();
 
+        /*
+         * when `key` is an empty string retrieve the object meta-data of the bucket
+         */
+        if( "".equals(s3Path.getKey()) ) {
+            S3Object obj = getS3Object(s3Path.getBucket(), "", client);
+            if( obj == null )
+                return null;
+
+            ObjectMetadata meta = obj.getObjectMetadata();
+            summary = new S3ObjectSummary();
+            summary.setBucketName(s3Path.getBucket());
+            summary.setETag(meta.getETag());
+            summary.setKey(s3Path.getKey());
+            summary.setLastModified(meta.getLastModified());
+            summary.setSize(meta.getContentLength());
+            // TODO summary.setOwner(?);
+            // TODO summary.setStorageClass(?);
+            return summary;
+        }
+
+        /*
+         * Lookup for the object summary for the specified object key
+         * by using a `listObjects` request
+         */
         ListObjectsRequest request = new ListObjectsRequest();
         request.setBucketName(s3Path.getBucket());
         request.setPrefix(s3Path.getKey());
@@ -40,7 +71,6 @@ public class S3ObjectSummaryLookup {
         }
     }
 
-    @Deprecated
     public ObjectMetadata getS3ObjectMetadata(S3Path s3Path) {
         AmazonS3Client client = s3Path.getFileSystem().getClient();
         try {
@@ -83,11 +113,14 @@ public class S3ObjectSummaryLookup {
      */
     private S3Object getS3Object(String bucket, String key, AmazonS3Client client){
         try {
-            S3Object object = client
-                    .getObject(bucket, key);
-            // FIXME: how only get the metadata
+            S3Object object = client .getObject(bucket, key);
             if (object.getObjectContent() != null){
-                object.getObjectContent().close();
+                try {
+                    object.getObjectContent().close();
+                }
+                catch (IOException e ) {
+                    log.debug("Error while closing S3Object for bucket: `{}` and key: `{}` -- Cause: {}",bucket, key, e.getMessage());
+                }
             }
             return object;
         }
@@ -96,9 +129,6 @@ public class S3ObjectSummaryLookup {
                 throw e;
             }
             return null;
-        }
-        catch (IOException e){
-            throw new RuntimeException(e);
         }
     }
 }

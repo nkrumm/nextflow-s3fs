@@ -542,11 +542,11 @@ public class FilesOperationsIT {
 
 		Path path = fileSystemAmazon.getPath(bucket, "/");
 		BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-		assertEquals(0, attrs.size());
-		assertTrue(attrs.creationTime().toMillis()>0);
-		assertTrue(attrs.lastAccessTime().toMillis()>0);
-		assertTrue(attrs.lastModifiedTime().toMillis()>0);
 		assertTrue(attrs.isDirectory());
+		assertEquals(0, attrs.size());
+		assertTrue(attrs.creationTime() == null);
+		assertTrue(attrs.lastAccessTime() == null);
+		assertTrue(attrs.lastModifiedTime() == null);
 
 	}
 
