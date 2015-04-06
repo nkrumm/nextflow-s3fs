@@ -584,7 +584,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
 				directory = true;
 			}
 			// is a directory but not exists at amazon s3
-			else if (!objectSummary.getKey().equals(s3Path.getKey()) && objectSummary.getKey().startsWith(s3Path.getKey())){
+			else if ((!objectSummary.getKey().equals(s3Path.getKey()) || "".equals(s3Path.getKey())) && objectSummary.getKey().startsWith(s3Path.getKey())){
 				directory = true;
 				// no metadata, we fake one
 				size = 0;
