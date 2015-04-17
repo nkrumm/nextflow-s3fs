@@ -59,7 +59,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import com.upplication.s3fs.util.FileTypeDetector;
 import com.upplication.s3fs.util.IOUtils;
 import com.upplication.s3fs.util.S3ObjectSummaryLookup;
 import org.slf4j.Logger;
@@ -140,7 +139,6 @@ public class S3FileSystemProvider extends FileSystemProvider {
 
 	final AtomicReference<S3FileSystem> fileSystem = new AtomicReference<>();
 
-    private final FileTypeDetector fileTypeDetector = new com.upplication.s3fs.util.FileTypeDetector();
     private final S3ObjectSummaryLookup s3ObjectSummaryLookup = new S3ObjectSummaryLookup();
 
 	private Properties props;
@@ -326,7 +324,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
                     ObjectMetadata metadata = new ObjectMetadata();
                     metadata.setContentLength(Files.size(tempFile));
                     // FIXME: #20 ServiceLoader cant load com.upplication.s3fs.util.FileTypeDetector when this library is used inside a ear :(
-                    metadata.setContentType(fileTypeDetector.probeContentType(tempFile));
+					metadata.setContentType(Files.probeContentType(tempFile));
 
                     try (InputStream stream = Files.newInputStream(tempFile)) {
                         /*
