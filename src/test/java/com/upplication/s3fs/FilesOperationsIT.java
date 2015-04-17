@@ -54,9 +54,12 @@ import org.junit.Test;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.charset.Charset;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystemNotFoundException;
@@ -739,6 +742,26 @@ public class FilesOperationsIT {
 		assertTrue(files.contains(base.resolve("file2.txt")));
 		assertTrue(files.contains(base.resolve("dir1")));
 		assertTrue(files.contains(base.resolve("dir2")));
+	}
+
+	@Test
+	public void testOutputStreamWriter() throws IOException {
+
+		Path root = fileSystemAmazon.getPath(bucket);
+		Path file = root.resolve("file_" + UUID.randomUUID().toString() + ".txt");
+
+		Writer writer = new OutputStreamWriter(Files.newOutputStream(file), Charset.defaultCharset());
+		writer.write("Hello");
+		writer.flush();
+		writer.close();
+
+		writer = new OutputStreamWriter(Files.newOutputStream(file), Charset.defaultCharset());
+		writer.write("World");
+		writer.flush();
+		writer.close();
+
+		assertEquals("World", Files.readAllLines(file, Charset.defaultCharset()).get(0));
+
 	}
 
 }

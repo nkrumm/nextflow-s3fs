@@ -295,16 +295,23 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		// we resolve to a file inside the temp folder with the s3path name
         final Path tempFile = createTempDir().resolve(path.getFileName().toString());
 
-        if (Files.exists(path)){
-            InputStream is = s3Path.getFileSystem()
-                    .getClient()
-            .getObject(s3Path.getBucket(), s3Path.getKey()).getObjectContent();
+		try {
+			InputStream is = s3Path.getFileSystem().getClient()
+					.getObject(s3Path.getBucket(), s3Path.getKey())
+					.getObjectContent();
 
-           Files.write(tempFile, IOUtils.toByteArray(is));
-        }
+			if (is == null)
+				throw new IOException(String.format("The specified path is a directory: %s", path));
+
+			Files.write(tempFile, IOUtils.toByteArray(is));
+		}
+		catch (AmazonS3Exception e) {
+			if (e.getStatusCode() != 404)
+				throw new IOException(String.format("Cannot access file: %s", path),e);
+		}
+
         // and we can use the File SeekableByteChannel implementation
-		final SeekableByteChannel seekable = Files
-				.newByteChannel(tempFile, options);
+		final SeekableByteChannel seekable = Files .newByteChannel(tempFile, options);
 
 		return new SeekableByteChannel() {
 			@Override
