@@ -56,7 +56,7 @@ import java.util.List;
  */
 public class AmazonS3Client {
 	
-	private AmazonS3 client;
+	AmazonS3 client;
 	
 	public AmazonS3Client(AmazonS3 client){
 		this.client = client;

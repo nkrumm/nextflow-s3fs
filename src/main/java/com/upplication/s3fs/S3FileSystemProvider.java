@@ -87,13 +87,16 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.FileAttributeView;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.spi.FileSystemProvider;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -274,16 +277,50 @@ public class S3FileSystemProvider extends FileSystemProvider {
 	}
 
 	@Override
-	public OutputStream newOutputStream(Path path, OpenOption... options)
-			throws IOException {
+	public OutputStream newOutputStream(final Path path, final OpenOption... options) throws IOException {
+		Preconditions.checkArgument(path instanceof S3Path, "path must be an instance of %s", S3Path.class.getName());
+		S3Path s3Path = (S3Path)path;
 
-        Preconditions.checkArgument(path instanceof S3Path,
-                "path must be an instance of %s", S3Path.class.getName());
+		// validate options
+		if (options.length > 0) {
+			Set<OpenOption> opts = new LinkedHashSet<>(Arrays.asList(options));
 
-        return super.newOutputStream(path, options);
+			// cannot handle APPEND here -> use newByteChannel() implementation
+			if (opts.contains(StandardOpenOption.APPEND)) {
+				return super.newOutputStream(path, options);
+			}
+
+			if (opts.contains(StandardOpenOption.READ)) {
+				throw new IllegalArgumentException("READ not allowed");
+			}
+
+			boolean create = opts.remove(StandardOpenOption.CREATE);
+			boolean createNew = opts.remove(StandardOpenOption.CREATE_NEW);
+			boolean truncateExisting = opts.remove(StandardOpenOption.TRUNCATE_EXISTING);
+
+			// remove irrelevant/ignored options
+			opts.remove(StandardOpenOption.WRITE);
+			opts.remove(StandardOpenOption.SPARSE);
+
+			if (!opts.isEmpty()) {
+				throw new UnsupportedOperationException(opts.iterator().next() + " not supported");
+			}
+
+			if (!(create && truncateExisting)) {
+				if (exists(s3Path)) {
+					if (createNew || !truncateExisting) {
+						throw new FileAlreadyExistsException(path.toString());
+					}
+				} else {
+					if (!createNew && !create) {
+						throw new NoSuchFileException(path.toString());
+					}
+				}
+			}
+		}
+
+		return new S3OutputStream(s3Path.getFileSystem().getClient().client, s3Path.toS3ObjectId());
 	}
-
-
 
 	@Override
 	public SeekableByteChannel newByteChannel(Path path,

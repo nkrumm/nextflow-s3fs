@@ -44,6 +44,7 @@
 
 package com.upplication.s3fs;
 
+import com.amazonaws.services.s3.model.S3ObjectId;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.common.base.Function;
 import com.google.common.base.Joiner;
@@ -175,6 +176,10 @@ public class S3Path implements Path {
 		return Joiner.on(PATH_SEPARATOR).join(builder.build());
 	}
 
+	public S3ObjectId toS3ObjectId() {
+		return new S3ObjectId(bucket, getKey());
+	}
+
 	@Override
 	public S3FileSystem getFileSystem() {
 		return this.fileSystem;
@@ -287,7 +292,7 @@ public class S3Path implements Path {
 		if (!(other instanceof S3Path)){
 			return false;
 		}
-		
+
 		S3Path path = (S3Path) other;
 
 		if ((path.getBucket() != null && !path.getBucket().equals(this.getBucket())) ||
