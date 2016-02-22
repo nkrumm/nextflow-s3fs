@@ -48,6 +48,7 @@ import com.amazonaws.ClientConfiguration;
 import com.amazonaws.Protocol;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AccessControlList;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.Grant;
@@ -319,7 +320,20 @@ public class S3FileSystemProvider extends FileSystemProvider {
 			}
 		}
 
-		return new S3OutputStream(s3Path.getFileSystem().getClient().client, s3Path.toS3ObjectId());
+		return createUploaderOutputStream(s3Path);
+	}
+
+	private S3OutputStream createUploaderOutputStream( S3Path fileToUpload ) {
+		AmazonS3 s3 = fileToUpload.getFileSystem().getClient().client;
+
+		S3OutputStream.S3UploadRequest req = new S3OutputStream
+				.S3UploadRequest()
+				.setObjectId(fileToUpload.toS3ObjectId())
+				.setMaxThreads(props.getProperty("upload_max_threads"))
+				.setChunkSize(props.getProperty("upload_chunk_size"))
+				.setStorageClass(props.getProperty("upload_storage_class"));
+
+		return new S3OutputStream(s3,req);
 	}
 
 	@Override
