@@ -62,6 +62,9 @@ import static java.util.Objects.requireNonNull;
 
 public final class S3OutputStream extends OutputStream {
 
+    /**
+     * Model a S3 multipart upload request
+     */
     static class S3UploadRequest {
 
         /**
@@ -85,12 +88,27 @@ public final class S3OutputStream extends OutputStream {
         private int chunkSize;
 
         /**
-         * Max number of threads allowed
+         * Maximum number of threads allowed
          */
         private int maxThreads;
 
+        /**
+         * Maximum number of attempts to upload a chunk in a multiparts upload process
+         */
+        private int maxAttempts;
+
+        /**
+         * Time (milliseconds) to wait after a failed upload to retry a chunk upload
+         */
+        private long retrySleep;
+
+        /**
+         * initialize default values
+         */
         {
+            retrySleep = 100;
             chunkSize = DEFAULT_CHUNK_SIZE;
+            maxAttempts = 5;
             maxThreads = Runtime.getRuntime().availableProcessors();
             if( maxThreads > 1 ) {
                 maxThreads--;
@@ -153,11 +171,44 @@ public final class S3OutputStream extends OutputStream {
                 setMaxThreads(Integer.parseInt(maxThreads));
             }
             catch( NumberFormatException e ) {
-                log.warn("Not a valid AWS S3 multipart upload max thread value: `{}` -- Using default", maxThreads);
+                log.warn("Not a valid AWS S3 multipart upload max threads: `{}` -- Using default", maxThreads);
             }
             return this;
         }
 
+        public S3UploadRequest setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
+            return this;
+        }
+
+        public S3UploadRequest setMaxAttempts(String maxAttempts) {
+            if( maxAttempts == null ) return this;
+            try {
+                this.maxAttempts = Integer.parseInt(maxAttempts);
+            }
+            catch(NumberFormatException e ) {
+                log.warn("Not a valid AWS S3 multipart upload max attempts value: `{}` -- Using default", maxAttempts);
+            }
+            return this;
+        }
+
+        public S3UploadRequest setRetrySleep( long retrySleep ) {
+            this.retrySleep = retrySleep;
+            return this;
+        }
+
+        public S3UploadRequest setRetrySleep( String retrySleep ) {
+            if( retrySleep == null ) return this;
+
+            try {
+                this.retrySleep = Long.parseLong(retrySleep);
+            }
+            catch (NumberFormatException e ) {
+                log.warn("Not a valid AWS S3 multipart upload retry sleep value: `{}` -- Using default", retrySleep);
+            }
+            return this;
+        }
+        
     }
 
     /**
@@ -223,6 +274,10 @@ public final class S3OutputStream extends OutputStream {
      */
     private volatile boolean closed;
 
+    /**
+     * Indicates if the upload has been aborted
+     */
+    private volatile boolean aborted;
 
     /**
      * If a multipart upload is in progress, holds the ID for it, {@code null} otherwise.
@@ -255,8 +310,14 @@ public final class S3OutputStream extends OutputStream {
      */
     private ByteBuffer buf;
 
+    /**
+     * Phaser object to synchronize stream termination
+     */
     private Phaser phaser;
 
+    /**
+     * Count the number of uploaded chunks
+     */
     private int partsCount;
 
 
@@ -293,7 +354,7 @@ public final class S3OutputStream extends OutputStream {
      * Writes a byte into the uploader buffer. When it is full starts the upload process
      * in a asynchornous manner
      *
-     * @param b
+     * @param b The byte to be written
      * @throws IOException
      */
     @Override
@@ -459,7 +520,7 @@ public final class S3OutputStream extends OutputStream {
     }
 
     /**
-     * Upload the given buffer to the S3 storage
+     * Upload the given buffer to the S3 storage using a multipart process
      *
      * @param buf The buffer holding the data to upload
      * @param partNumber The progressive index of this chunk (1-based)
@@ -468,14 +529,43 @@ public final class S3OutputStream extends OutputStream {
      */
     private void uploadPart( final ByteBuffer buf, final int partNumber, final boolean lastPart ) throws IOException {
         buf.flip();
-        int len = buf.limit();
-        uploadPart( len, new ByteBufferInputStream(buf), partNumber, lastPart );
-        bufferPool.offer(buf);
+        buf.mark();
+
+        int attempt=0;
+        boolean success=false;
+        try {
+            while( !success ) {
+                attempt++;
+                int len = buf.limit();
+                try {
+                    log.trace("Uploading part {} with length {} attempt {} for {} ", partNumber, len, attempt, objectId);
+                    uploadPart( len, new ByteBufferInputStream(buf), partNumber, lastPart );
+                    success=true;
+                }
+                catch (final AmazonClientException e) {
+                    if( attempt == request.maxAttempts )
+                        throw new IOException("Failed to upload multipart data to Amazon S3", e);
+
+                    log.debug("Failed to upload part {} attempt {} for {} -- Cause: {}", partNumber, attempt, objectId, e.getMessage());
+                    sleep(request.retrySleep);
+                    buf.reset();
+                }
+            }
+        }
+        finally {
+            if (!success) {
+                closed = true;
+                abortMultipartUpload();
+            }
+            bufferPool.offer(buf);
+        }
+
     }
 
     private void uploadPart(final long contentLength, final InputStream content, final int partNumber, final boolean lastPart)
             throws IOException {
 
+        if (aborted) return;
 
         final UploadPartRequest request = new UploadPartRequest();
         request.setBucketName(objectId.getBucket());
@@ -486,40 +576,46 @@ public final class S3OutputStream extends OutputStream {
         request.setInputStream(content);
         request.setLastPart(lastPart);
 
-        log.trace("Uploading part {} with length {} for {} ", partNumber, contentLength, objectId);
-
-        boolean success = false;
-        try {
-            final PartETag partETag = s3.uploadPart(request).getPartETag();
-            log.trace("Uploaded part {} with length {} for {}: {}", partETag.getPartNumber(), contentLength, objectId, partETag.getETag());
-            partETags.add(partETag);
-            success = true;
-        }
-        catch (final AmazonClientException e) {
-            throw new IOException("Failed to upload multipart data to Amazon S3", e);
-        }
-        finally {
-            if (!success) {
-                closed = true;
-                abortMultipartUpload();
-            }
-        }
+        final PartETag partETag = s3.uploadPart(request).getPartETag();
+        log.trace("Uploaded part {} with length {} for {}: {}", partETag.getPartNumber(), contentLength, objectId, partETag.getETag());
+        partETags.add(partETag);
 
     }
 
-    private void abortMultipartUpload() {
+    private void sleep( long millis ) {
+        try {
+            Thread.sleep(millis);
+        }
+        catch (InterruptedException e) {
+            log.debug("Sleep was interrupted -- Cause: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Aborts the multipart upload process
+     */
+    private synchronized void abortMultipartUpload() {
+        if (aborted) return;
+
         log.debug("Aborting multipart upload {} for {}", uploadId, objectId);
         try {
             s3.abortMultipartUpload(new AbortMultipartUploadRequest(objectId.getBucket(), objectId.getKey(), uploadId));
-            uploadId = null;
-            partETags = null;
         }
         catch (final AmazonClientException e) {
             log.warn("Failed to abort multipart upload {}: {}", uploadId, e.getMessage());
         }
+        aborted = true;
+        phaser.arriveAndDeregister();
     }
 
+    /**
+     * Completes the multipart upload process
+     * @throws IOException
+     */
     private void completeMultipartUpload() throws IOException {
+        // if aborted upload just ignore it
+        if( aborted ) return;
+
         final int partCount = partETags.size();
         log.trace("Completing upload to {} consisting of {} parts", objectId, partCount);
 
@@ -536,11 +632,23 @@ public final class S3OutputStream extends OutputStream {
         partETags = null;
     }
 
+    /**
+     * Stores the given buffer using a single-part upload process
+     * @param buf
+     * @throws IOException
+     */
     private void putObject(ByteBuffer buf) throws IOException {
         buf.flip();
         putObject(buf.limit(), new ByteBufferInputStream(buf));
     }
 
+    /**
+     * Stores the given buffer using a single-part upload process
+     *
+     * @param contentLength
+     * @param content
+     * @throws IOException
+     */
     private void putObject(final long contentLength, final InputStream content) throws IOException {
 
         final ObjectMetadata meta = metadata.clone();

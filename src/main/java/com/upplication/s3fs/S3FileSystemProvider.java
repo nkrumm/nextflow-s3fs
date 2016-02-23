@@ -331,7 +331,9 @@ public class S3FileSystemProvider extends FileSystemProvider {
 				.setObjectId(fileToUpload.toS3ObjectId())
 				.setMaxThreads(props.getProperty("upload_max_threads"))
 				.setChunkSize(props.getProperty("upload_chunk_size"))
-				.setStorageClass(props.getProperty("upload_storage_class"));
+				.setStorageClass(props.getProperty("upload_storage_class"))
+				.setMaxAttempts(props.getProperty("upload_max_attempts"))
+				.setRetrySleep(props.getProperty("upload_retry_sleep"));
 
 		return new S3OutputStream(s3,req);
 	}
