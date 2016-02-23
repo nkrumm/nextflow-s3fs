@@ -57,6 +57,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.NoSuchFileException;
+import java.util.List;
 
 public class S3ObjectSummaryLookup {
 
@@ -86,7 +87,7 @@ public class S3ObjectSummaryLookup {
         if( "".equals(s3Path.getKey()) ) {
             S3Object obj = getS3Object(s3Path.getBucket(), "", client);
             if( obj == null )
-                return null;
+                throw new NoSuchFileException("s3://" + s3Path.getBucket());
 
             ObjectMetadata meta = obj.getObjectMetadata();
             summary = new S3ObjectSummary();
@@ -104,18 +105,50 @@ public class S3ObjectSummaryLookup {
          * Lookup for the object summary for the specified object key
          * by using a `listObjects` request
          */
-        ListObjectsRequest request = new ListObjectsRequest();
-        request.setBucketName(s3Path.getBucket());
-        request.setPrefix(s3Path.getKey());
-        request.setMaxKeys(1);
-        ObjectListing current = client.listObjects(request);
+        String marker = null;
+        while( true ) {
+            ListObjectsRequest request = new ListObjectsRequest();
+            request.setBucketName(s3Path.getBucket());
+            request.setPrefix(s3Path.getKey());
+            request.setMaxKeys(250);
+            if( marker != null )
+                request.setMarker(marker);
 
-        if (!current.getObjectSummaries().isEmpty()){
-            return current.getObjectSummaries().get(0);
+            ObjectListing listing = client.listObjects(request);
+            List<S3ObjectSummary> results = listing.getObjectSummaries();
+
+            if (results.isEmpty()){
+                break;
+            }
+
+            for( S3ObjectSummary item : results ) {
+                if( matchName(s3Path.getKey(), item)) {
+                    return item;
+                }
+            }
+
+            if( listing.isTruncated() )
+                marker = listing.getNextMarker();
+            else
+                break;
         }
-        else {
-            throw new NoSuchFileException("s3://" + s3Path.getBucket() + "/" + s3Path.toString());
+
+        throw new NoSuchFileException("s3://" + s3Path.getBucket() + "/" + s3Path.toString());
+    }
+
+    private boolean matchName(String fileName, S3ObjectSummary summary) {
+        String foundKey = summary.getKey();
+
+        // they are different names return false
+        if( !foundKey.startsWith(fileName) ) {
+            return false;
         }
+
+        // when they are the same length, they are identical
+        if( foundKey.length() == fileName.length() )
+            return true;
+
+        return foundKey.charAt(fileName.length()) == '/';
     }
 
     public ObjectMetadata getS3ObjectMetadata(S3Path s3Path) {

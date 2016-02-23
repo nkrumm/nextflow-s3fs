@@ -723,7 +723,7 @@ public class FilesOperationsIT {
 		assertTrue(files.contains(base.resolve("file1.txt")));
 		assertTrue(files.contains(base.resolve("file2.txt")));
 		assertTrue(files.contains(base.resolve("dir1/file3.txt")));
-		assertTrue( files.contains(base.resolve("dir2/file4.txt")) );
+		assertTrue(files.contains(base.resolve("dir2/file4.txt")) );
 		assertTrue(files.contains(base.resolve("dir2/file5.txt")));
 		assertTrue(files.contains(base.resolve("dir2/sub-dir/file6.txt")));
 
@@ -762,6 +762,56 @@ public class FilesOperationsIT {
 
 		assertEquals("World", Files.readAllLines(file, Charset.defaultCharset()).get(0));
 
+	}
+
+	@Test
+	public void testFileExistsWithSameNamePrefix() throws IOException {
+
+		Path root = fileSystemAmazon.getPath(bucket);
+		Path folder = root.resolve("dir_" + UUID.randomUUID().toString());
+		Files.createDirectory(folder);
+
+		Path file1 = folder.resolve("transcript_index.junctions.fa");
+
+		Files.createFile(file1);
+		assertTrue(Files.exists(file1));
+
+		Path file2 = folder.resolve("transcript_index.junctions");
+		assertFalse(Files.exists(file2));
+
+		Path file3 = folder.resolve("alpha-beta/file1");
+		Path file4 = folder.resolve("alpha/file2");
+
+		Files.createFile(file3);
+		Files.createFile(file4);
+
+		assertTrue(Files.exists(file3));
+		assertTrue(Files.exists(file4));
+		assertTrue(Files.exists(file3.getParent()));
+		assertTrue(Files.exists(file4.getParent()));
+	}
+
+	@Test public void testCopyFileWithSameNamePrefix() throws IOException {
+
+		String STR1 = "Hello world!";
+		String STR2 = "Ciao mondo!";
+
+		Path root = fileSystemAmazon.getPath(bucket);
+		Path folder = root.resolve("dir_" + UUID.randomUUID().toString());
+		Files.createDirectory(folder);
+
+		Path file1 = folder.resolve("transcript_index.junctions.fa");
+		Path file2 = folder.resolve("transcript_index.junctions");
+
+		Files.copy(new ByteArrayInputStream(STR1.getBytes()), file1);
+		assertTrue(Files.exists(file1));
+		assertFalse(Files.exists(file2));
+
+		Files.copy(new ByteArrayInputStream(STR2.getBytes()), file2);
+		assertTrue(Files.exists(file2));
+
+		assertEquals(STR1, new String(Files.readAllBytes(file1)));
+		assertEquals(STR2, new String(Files.readAllBytes(file2)));
 	}
 
 }
