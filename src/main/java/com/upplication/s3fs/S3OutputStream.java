@@ -32,6 +32,7 @@ import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3ObjectId;
 import com.amazonaws.services.s3.model.StorageClass;
 import com.amazonaws.services.s3.model.UploadPartRequest;
+import com.amazonaws.util.Base64;
 import com.upplication.s3fs.util.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -310,6 +313,8 @@ public final class S3OutputStream extends OutputStream {
      */
     private ByteBuffer buf;
 
+    private MessageDigest md5;
+
     /**
      * Phaser object to synchronize stream termination
      */
@@ -347,6 +352,20 @@ public final class S3OutputStream extends OutputStream {
         this.request = request;
         // initialize the buffer
         this.buf = allocate();
+        this.md5 = createMd5();
+    }
+
+
+    /**
+     * @return A MD5 message digester
+     */
+    private MessageDigest createMd5() {
+        try {
+            return MessageDigest.getInstance("MD5");
+        }
+        catch(NoSuchAlgorithmException e) {
+            throw new IllegalStateException("Cannot find a MD5 algorithm provider",e);
+        }
     }
 
 
@@ -364,6 +383,8 @@ public final class S3OutputStream extends OutputStream {
         }
 
         buf.put((byte) b);
+        // update the md5 checksum
+        md5.update((byte) b);
     }
 
     /**
@@ -385,6 +406,8 @@ public final class S3OutputStream extends OutputStream {
             // allocate a new buffer
             buf = allocate();
         }
+
+        md5 = createMd5();
     }
 
     /**
@@ -411,7 +434,7 @@ public final class S3OutputStream extends OutputStream {
         }
 
         // set the buffer in read mode and submit for upload
-        executor.submit( task(buf, ++partsCount) );
+        executor.submit( task(buf, md5.digest(), ++partsCount) );
     }
 
     /**
@@ -442,14 +465,14 @@ public final class S3OutputStream extends OutputStream {
      * @param partIndex The index count
      * @return
      */
-    private Runnable task(final ByteBuffer buffer, final int partIndex) {
+    private Runnable task(final ByteBuffer buffer, final byte[] checksum, final int partIndex) {
 
         phaser.register();
         return new Runnable() {
             @Override
             public void run() {
                 try {
-                    uploadPart(buffer, partIndex, false);
+                    uploadPart(buffer, checksum, partIndex, false);
                 }
                 catch (IOException e) {
                     log.debug("Upload: {} > Error for part: %s -- cause: %s", uploadId, partIndex, e.getMessage());
@@ -475,7 +498,7 @@ public final class S3OutputStream extends OutputStream {
         }
 
         if (uploadId == null) {
-            putObject(buf);
+            putObject(buf, md5.digest());
         }
         else {
             // -- upload remaining chunk
@@ -527,7 +550,7 @@ public final class S3OutputStream extends OutputStream {
      * @param lastPart {@code true} when it is the last chunk
      * @throws IOException
      */
-    private void uploadPart( final ByteBuffer buf, final int partNumber, final boolean lastPart ) throws IOException {
+    private void uploadPart( final ByteBuffer buf, final byte[] checksum, final int partNumber, final boolean lastPart ) throws IOException {
         buf.flip();
         buf.mark();
 
@@ -539,7 +562,7 @@ public final class S3OutputStream extends OutputStream {
                 int len = buf.limit();
                 try {
                     log.trace("Uploading part {} with length {} attempt {} for {} ", partNumber, len, attempt, objectId);
-                    uploadPart( len, new ByteBufferInputStream(buf), partNumber, lastPart );
+                    uploadPart( new ByteBufferInputStream(buf), len, checksum , partNumber, lastPart );
                     success=true;
                 }
                 catch (final AmazonClientException e) {
@@ -562,7 +585,7 @@ public final class S3OutputStream extends OutputStream {
 
     }
 
-    private void uploadPart(final long contentLength, final InputStream content, final int partNumber, final boolean lastPart)
+    private void uploadPart(final InputStream content, final long contentLength, final byte[] checksum, final int partNumber, final boolean lastPart)
             throws IOException {
 
         if (aborted) return;
@@ -575,6 +598,7 @@ public final class S3OutputStream extends OutputStream {
         request.setPartSize(contentLength);
         request.setInputStream(content);
         request.setLastPart(lastPart);
+        request.setMd5Digest(Base64.encodeAsString(checksum));
 
         final PartETag partETag = s3.uploadPart(request).getPartETag();
         log.trace("Uploaded part {} with length {} for {}: {}", partETag.getPartNumber(), contentLength, objectId, partETag.getETag());
@@ -637,9 +661,9 @@ public final class S3OutputStream extends OutputStream {
      * @param buf
      * @throws IOException
      */
-    private void putObject(ByteBuffer buf) throws IOException {
+    private void putObject(ByteBuffer buf, byte[] checksum) throws IOException {
         buf.flip();
-        putObject(buf.limit(), new ByteBufferInputStream(buf));
+        putObject(buf.limit(), new ByteBufferInputStream(buf), checksum);
     }
 
     /**
@@ -649,10 +673,11 @@ public final class S3OutputStream extends OutputStream {
      * @param content
      * @throws IOException
      */
-    private void putObject(final long contentLength, final InputStream content) throws IOException {
+    private void putObject(final long contentLength, final InputStream content, byte[] checksum) throws IOException {
 
         final ObjectMetadata meta = metadata.clone();
         meta.setContentLength(contentLength);
+        meta.setContentMD5( Base64.encodeAsString(checksum) );
 
         final PutObjectRequest request = new PutObjectRequest(objectId.getBucket(), objectId.getKey(), content, meta);
 
