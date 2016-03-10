@@ -141,6 +141,7 @@ public class S3Iterator implements Iterator<Path> {
 
         // add all the common prefixes i.e. the directories
         for(final String dir : current.getCommonPrefixes()) {
+            if( dir.equals("/") ) continue;
             listPath.add(new S3Path(s3FileSystem, "/" + bucket, dir));
         }
 
