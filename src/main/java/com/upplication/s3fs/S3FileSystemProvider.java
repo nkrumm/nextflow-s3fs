@@ -771,6 +771,13 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		if (uri.getHost() != null) {
 			client.setEndpoint(uri.getHost());
 		}
+		else if( props.getProperty("endpoint") != null ){
+			client.setEndpoint(props.getProperty("endpoint"));
+		}
+
+		if( props.getProperty("region") != null ) {
+			client.setRegion(props.getProperty("region"));
+		}
 
 		S3FileSystem result = new S3FileSystem(this, client, uri.getHost());
 		return result;
