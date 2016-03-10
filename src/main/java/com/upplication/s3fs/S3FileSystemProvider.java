@@ -774,8 +774,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		else if( props.getProperty("endpoint") != null ){
 			client.setEndpoint(props.getProperty("endpoint"));
 		}
-
-		if( props.getProperty("region") != null ) {
+		else if( props.getProperty("region") != null ) {
 			client.setRegion(props.getProperty("region"));
 		}
 
