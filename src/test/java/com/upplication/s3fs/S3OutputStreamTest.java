@@ -184,7 +184,7 @@ public class S3OutputStreamTest {
     }
 
     @Test
-    public void testMultipartUploadManyFlushs() throws IOException {
+    public void testMultipartUploadManyFlushes() throws IOException {
 
         /**
          * Verifies that multipart multipart upload works correctly when the payload

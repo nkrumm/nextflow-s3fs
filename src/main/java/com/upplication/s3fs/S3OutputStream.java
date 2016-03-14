@@ -41,6 +41,8 @@ import sun.nio.ch.DirectBuffer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -453,7 +455,7 @@ public final class S3OutputStream extends OutputStream {
         partETags = new LinkedBlockingQueue<>();
         phaser = new Phaser();
         phaser.register();
-        log.debug("Starting S3 upload: {}; chunk-size: {}; max-threads: {}", uploadId, request.chunkSize, request.maxThreads);
+        log.trace("Starting S3 upload: {}; chunk-size: {}; max-threads: {}", uploadId, request.chunkSize, request.maxThreads);
     }
 
 
@@ -475,8 +477,9 @@ public final class S3OutputStream extends OutputStream {
                     uploadPart(buffer, checksum, partIndex, false);
                 }
                 catch (IOException e) {
-                    log.debug("Upload: {} > Error for part: %s -- cause: %s", uploadId, partIndex, e.getMessage());
-                    throw new IllegalStateException(e);
+                    final StringWriter writer = new StringWriter();
+                    e.printStackTrace(new PrintWriter(writer));
+                    log.error("Upload: {} > Error for part: {}\nCaused by: {}", uploadId, partIndex, writer.toString());
                 }
                 finally {
                     phaser.arriveAndDeregister();
@@ -565,11 +568,11 @@ public final class S3OutputStream extends OutputStream {
                     uploadPart( new ByteBufferInputStream(buf), len, checksum , partNumber, lastPart );
                     success=true;
                 }
-                catch (final AmazonClientException e) {
+                catch (AmazonClientException | IOException e) {
                     if( attempt == request.maxAttempts )
                         throw new IOException("Failed to upload multipart data to Amazon S3", e);
 
-                    log.debug("Failed to upload part {} attempt {} for {} -- Cause: {}", partNumber, attempt, objectId, e.getMessage());
+                    log.debug("Failed to upload part {} attempt {} for {} -- Caused by: {}", partNumber, attempt, objectId, e.getMessage());
                     sleep(request.retrySleep);
                     buf.reset();
                 }
@@ -611,7 +614,7 @@ public final class S3OutputStream extends OutputStream {
             Thread.sleep(millis);
         }
         catch (InterruptedException e) {
-            log.debug("Sleep was interrupted -- Cause: {}", e.getMessage());
+            log.trace("Sleep was interrupted -- Cause: {}", e.getMessage());
         }
     }
 
@@ -701,7 +704,7 @@ public final class S3OutputStream extends OutputStream {
 
 
     /** holds a singleton executor instance */
-    static private ExecutorService executorSingleton;
+    static private volatile ExecutorService executorSingleton;
 
     /**
      * Creates a singleton executor instance.
@@ -723,10 +726,23 @@ public final class S3OutputStream extends OutputStream {
      * Shutdown the executor and clear the singleton
      */
     public static synchronized void shutdownExecutor() {
+        log.trace("Uploader shutdown -- Executor: {}", executorSingleton);
+
         if( executorSingleton != null ) {
             executorSingleton.shutdown();
+            log.trace("Uploader await completion");
+            awaitExecutorCompletion();
             executorSingleton = null;
+            log.trace("Uploader shutdown completed");
         }
     }
 
+    private static void awaitExecutorCompletion() {
+        try {
+            executorSingleton.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+        }
+        catch (InterruptedException e) {
+            log.trace("Executor await interrupted -- Cause: {}", e.getMessage());
+        }
+    }
 }
