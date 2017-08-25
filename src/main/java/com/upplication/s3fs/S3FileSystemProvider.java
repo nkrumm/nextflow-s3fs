@@ -333,7 +333,8 @@ public class S3FileSystemProvider extends FileSystemProvider {
 				.setChunkSize(props.getProperty("upload_chunk_size"))
 				.setStorageClass(props.getProperty("upload_storage_class"))
 				.setMaxAttempts(props.getProperty("upload_max_attempts"))
-				.setRetrySleep(props.getProperty("upload_retry_sleep"));
+				.setRetrySleep(props.getProperty("upload_retry_sleep"))
+                .setStorageEncryption(props.getProperty("storage_encryption"));
 
 		return new S3OutputStream(s3,req);
 	}
