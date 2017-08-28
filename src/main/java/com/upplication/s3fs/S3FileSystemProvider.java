@@ -56,6 +56,8 @@ import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.Owner;
 import com.amazonaws.services.s3.model.Permission;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.services.s3.model.CopyObjectRequest;
+import com.amazonaws.services.s3.model.GetObjectMetadataRequest;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -527,11 +529,16 @@ public class S3FileSystemProvider extends FileSystemProvider {
 						"target already exists: %s", target));
 			}
 		}
-
+        CopyObjectRequest copyObjRequest = new CopyObjectRequest(s3Source.getBucket(), s3Source.getKey(),s3Target.getBucket(), s3Target.getKey());
+        ObjectMetadata sourceObjMetadata = s3Source.getFileSystem().getClient().getObjectMetadata(s3Source.getBucket(), s3Source.getKey());
+        if (sourceObjMetadata.getSSEAlgorithm().equals("AES256")) {
+           ObjectMetadata targetObjectMetadata = new ObjectMetadata();
+           targetObjectMetadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
+           copyObjRequest.setNewObjectMetadata(targetObjectMetadata);
+        } 
 		s3Source.getFileSystem()
 				.getClient()
-				.copyObject(s3Source.getBucket(), s3Source.getKey(),
-						s3Target.getBucket(), s3Target.getKey());
+				.copyObject(copyObjRequest);
 	}
 
 	@Override

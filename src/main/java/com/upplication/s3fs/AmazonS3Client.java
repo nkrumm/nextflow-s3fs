@@ -55,6 +55,7 @@ import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.Owner;
 import com.amazonaws.services.s3.model.PutObjectResult;
+import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 
 import java.io.File;
@@ -115,6 +116,13 @@ public class AmazonS3Client {
 			String destinationKey) {
 		return client.copyObject(sourceBucketName, sourceKey, destinationBucketName, destinationKey);
 	}
+	/**
+	 * @see com.amazonaws.services.s3.AmazonS3Client#copyObject(CopyObjectRequest)
+	 */
+	public CopyObjectResult copyObject(CopyObjectRequest copyObjectRequest) {
+		return client.copyObject(copyObjectRequest);
+	}
+
 	/**
 	 * @see com.amazonaws.services.s3.AmazonS3Client#getBucketAcl(String)
 	 */
