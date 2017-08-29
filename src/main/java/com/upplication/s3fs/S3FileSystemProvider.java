@@ -532,11 +532,9 @@ public class S3FileSystemProvider extends FileSystemProvider {
         CopyObjectRequest copyObjRequest = new CopyObjectRequest(s3Source.getBucket(), s3Source.getKey(),s3Target.getBucket(), s3Target.getKey());
         ObjectMetadata sourceObjMetadata = s3Source.getFileSystem().getClient().getObjectMetadata(s3Source.getBucket(), s3Source.getKey());
         if (sourceObjMetadata.getSSEAlgorithm()!= null) {
-            if (sourceObjMetadata.getSSEAlgorithm().equals("AES256")) {
-               ObjectMetadata targetObjectMetadata = new ObjectMetadata();
-               targetObjectMetadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
-               copyObjRequest.setNewObjectMetadata(targetObjectMetadata);
-            }
+            ObjectMetadata targetObjectMetadata = new ObjectMetadata();
+            targetObjectMetadata.setSSEAlgorithm(sourceObjMetadata.getSSEAlgorithm());
+            copyObjRequest.setNewObjectMetadata(targetObjectMetadata);
         } 
 		s3Source.getFileSystem()
 				.getClient()
