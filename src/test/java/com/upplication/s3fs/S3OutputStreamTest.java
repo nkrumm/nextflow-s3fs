@@ -36,7 +36,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.util.Random;
 import java.util.UUID;
-
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
@@ -48,7 +48,6 @@ public class S3OutputStreamTest {
 
     private static final URI uri = URI.create("s3:///");
     private static final String bucket = EnvironmentBuilder.getBucket();
-
     private static int _1MB = 1024 * 1024;
 
     private S3FileSystem s3FileSystem;
@@ -156,13 +155,41 @@ public class S3OutputStreamTest {
     }
 
     @Test
+    public void testEncryptedObjects() throws IOException {
+    
+        byte[] payload = randomBytes(2 * _1MB);
+
+        String objectKey = UUID.randomUUID().toString();
+
+        S3Path path = (S3Path) s3FileSystem.getPath(bucket, objectKey);
+        S3OutputStream.S3UploadRequest req = new S3OutputStream
+                .S3UploadRequest()
+                .setObjectId(path.toS3ObjectId())
+                .setStorageEncryption("AES256");
+        S3OutputStream out = new S3OutputStream(s3FileSystem.getClient().client, req);
+        copy(payload, out);
+        out.close();
+        
+        ObjectMetadata sourceObjMetadata = s3FileSystem.getClient().getObjectMetadata(bucket, objectKey);
+        assertEquals("AES256",sourceObjMetadata.getSSEAlgorithm()); 
+        
+        S3Path copyPath = (S3Path) s3FileSystem.getPath(bucket, objectKey+"_copy");
+        S3FileSystemProvider provider = new S3FileSystemProvider();
+        provider.copy(path,copyPath);
+        
+        ObjectMetadata copyObjMetadata = s3FileSystem.getClient().getObjectMetadata(bucket, objectKey+"_copy");
+        assertEquals("AES256",copyObjMetadata.getSSEAlgorithm()); 
+    }
+
+
+    @Test
     public void testMultipartUploadMoreChunks() throws IOException {
 
         /*
          * since it uploads 17 MG and upload chunk size is 5 MB ==> 4 parts
          */
         byte[] payload = randomBytes(17 * _1MB);
-
+        
         // create a random S3 path
         S3Path path = (S3Path) s3FileSystem.getPath(bucket, UUID.randomUUID().toString());
 

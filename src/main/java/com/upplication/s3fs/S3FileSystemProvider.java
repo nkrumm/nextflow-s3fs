@@ -56,6 +56,8 @@ import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.Owner;
 import com.amazonaws.services.s3.model.Permission;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.services.s3.model.CopyObjectRequest;
+import com.amazonaws.services.s3.model.GetObjectMetadataRequest;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -333,7 +335,8 @@ public class S3FileSystemProvider extends FileSystemProvider {
 				.setChunkSize(props.getProperty("upload_chunk_size"))
 				.setStorageClass(props.getProperty("upload_storage_class"))
 				.setMaxAttempts(props.getProperty("upload_max_attempts"))
-				.setRetrySleep(props.getProperty("upload_retry_sleep"));
+				.setRetrySleep(props.getProperty("upload_retry_sleep"))
+                .setStorageEncryption(props.getProperty("storage_encryption"));
 
 		return new S3OutputStream(s3,req);
 	}
@@ -526,11 +529,16 @@ public class S3FileSystemProvider extends FileSystemProvider {
 						"target already exists: %s", target));
 			}
 		}
-
+        CopyObjectRequest copyObjRequest = new CopyObjectRequest(s3Source.getBucket(), s3Source.getKey(),s3Target.getBucket(), s3Target.getKey());
+        ObjectMetadata sourceObjMetadata = s3Source.getFileSystem().getClient().getObjectMetadata(s3Source.getBucket(), s3Source.getKey());
+        if (sourceObjMetadata.getSSEAlgorithm()!= null) {
+            ObjectMetadata targetObjectMetadata = new ObjectMetadata();
+            targetObjectMetadata.setSSEAlgorithm(sourceObjMetadata.getSSEAlgorithm());
+            copyObjRequest.setNewObjectMetadata(targetObjectMetadata);
+        } 
 		s3Source.getFileSystem()
 				.getClient()
-				.copyObject(s3Source.getBucket(), s3Source.getKey(),
-						s3Target.getBucket(), s3Target.getKey());
+				.copyObject(copyObjRequest);
 	}
 
 	@Override

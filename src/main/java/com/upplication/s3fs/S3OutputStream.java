@@ -142,6 +142,22 @@ public final class S3OutputStream extends OutputStream {
             return this;
         }
 
+        
+        public S3UploadRequest setStorageEncryption(String storageEncryption) {
+            if( storageEncryption == null) {
+                return this;
+            }
+            else if (storageEncryption != "AES256") {
+                log.warn("Not a valid S3 server-side encryption type: `{}` -- Currently only AES256 is supported",storageEncryption);
+            }
+            else {
+                ObjectMetadata objectMetadata = new ObjectMetadata();
+                objectMetadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
+                this.setMetadata(objectMetadata);
+            }
+            return this;
+        }
+
         public S3UploadRequest setMetadata(ObjectMetadata metadata) {
             this.metadata = metadata;
             return this;
