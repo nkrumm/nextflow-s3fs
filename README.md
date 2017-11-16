@@ -1,7 +1,7 @@
 NEXTFLOW S3FS 
 ===============
 
-A JSR-203 complaint file system provider for Amazon S3 storage. 
+A JSR-203 compliant file system provider for Amazon S3 storage. 
 
 Licence
 ---------
