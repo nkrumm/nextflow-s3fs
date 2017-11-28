@@ -21,7 +21,7 @@
 package com.upplication.s3fs.util;
 
 /**
- * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
+ * @author Paolo Di Tommaso paolo.ditommaso@gmail.com
  */
 
 import java.io.IOException;
@@ -33,7 +33,7 @@ import java.nio.ByteBuffer;
  *
  * See http://stackoverflow.com/a/6603018/395921
  *
- * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
+ * @author Paolo Di Tommaso paolo.ditommaso@gmail.com
  */
 public class ByteBufferInputStream extends InputStream {
 
