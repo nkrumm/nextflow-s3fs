@@ -737,6 +737,11 @@ public class S3FileSystemProvider extends FileSystemProvider {
 			config.setProxyWorkstation(props.getProperty("proxy_workstation"));
 		}
 
+		if ( props.containsKey("signer_override")) {
+			log.debug("AWS client config - signerOverride: {}", props.getProperty("signer_override"));
+			config.setSignerOverride(props.getProperty("signer_override"));
+		}
+
 		if( props.containsKey("socket_send_buffer_size_hints") || props.containsKey("socket_recv_buffer_size_hints") ) {
 			log.trace("AWS client config - socket_send_buffer_size_hints: {}, socket_recv_buffer_size_hints: {}", props.getProperty("socket_send_buffer_size_hints","0"), props.getProperty("socket_recv_buffer_size_hints", "0"));
 			int send = Integer.parseInt(props.getProperty("socket_send_buffer_size_hints","0"));
