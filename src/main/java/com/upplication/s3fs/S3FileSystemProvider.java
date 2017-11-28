@@ -778,7 +778,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
 			client = new AmazonS3Client(new com.amazonaws.services.s3.AmazonS3Client(config));
 		} else {
 			AWSCredentials credentials = new BasicAWSCredentials(accessKey.toString(), secretKey.toString());
-			client = new AmazonS3Client(new com.amazonaws.services.s3.AmazonS3Client(credentials));
+			client = new AmazonS3Client(new com.amazonaws.services.s3.AmazonS3Client(credentials,config));
 		}
 
 		if (uri.getHost() != null) {
