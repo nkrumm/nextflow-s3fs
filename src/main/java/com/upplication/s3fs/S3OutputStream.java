@@ -61,7 +61,7 @@ import static java.util.Objects.requireNonNull;
  * Parallel S3 multipart uploader. Based on the following code request
  * See https://github.com/Upplication/Amazon-S3-FileSystem-NIO2/pulls
  *
- * @Paolo Di Tommaso
+ * @author Paolo Di Tommaso
  * @author Tom Wieczorek
  */
 
