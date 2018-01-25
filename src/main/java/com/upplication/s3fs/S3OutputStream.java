@@ -68,169 +68,14 @@ import static java.util.Objects.requireNonNull;
 public final class S3OutputStream extends OutputStream {
 
     /**
-     * Model a S3 multipart upload request
+     * Minimum part size of a part in a multipart upload: 20 MiB.
+     *
+     * @see  <a href="http://docs.aws.amazon.com/AmazonS3/latest/API/mpUploadUploadPart.html">Amazon Simple Storage
+     *       Service (S3) » API Reference » REST API » Operations on Objects » Upload Part</a>
      */
-    static class S3UploadRequest {
+    @Deprecated
+    public static final int DEFAULT_CHUNK_SIZE = 20 << 20;
 
-        /**
-         * ID of the S3 object to store data into.
-         */
-        private S3ObjectId objectId;
-
-        /**
-         * Amazon S3 storage class to apply to the newly created S3 object, if any.
-         */
-        private StorageClass storageClass;
-
-        /**
-         * Metadata that will be attached to the stored S3 object.
-         */
-        private ObjectMetadata metadata;
-
-        /**
-         * Upload chunk max size
-         */
-        private int chunkSize;
-
-        /**
-         * Maximum number of threads allowed
-         */
-        private int maxThreads;
-
-        /**
-         * Maximum number of attempts to upload a chunk in a multiparts upload process
-         */
-        private int maxAttempts;
-
-        /**
-         * Time (milliseconds) to wait after a failed upload to retry a chunk upload
-         */
-        private long retrySleep;
-
-        /**
-         * initialize default values
-         */
-        {
-            retrySleep = 100;
-            chunkSize = DEFAULT_CHUNK_SIZE;
-            maxAttempts = 5;
-            maxThreads = Runtime.getRuntime().availableProcessors();
-            if( maxThreads > 1 ) {
-                maxThreads--;
-            }
-        }
-
-        public S3UploadRequest setObjectId(S3ObjectId objectId) {
-            this.objectId = objectId;
-            return this;
-        }
-
-        public S3UploadRequest setStorageClass(StorageClass storageClass) {
-            this.storageClass = storageClass;
-            return this;
-        }
-
-        public S3UploadRequest setStorageClass(String storageClass) {
-            if( storageClass==null ) return this;
-
-            try {
-                setStorageClass( StorageClass.fromValue(storageClass) );
-            }
-            catch( IllegalArgumentException e ) {
-                log.warn("Not a valid AWS S3 storage class: `{}` -- Using default", storageClass);
-            }
-            return this;
-        }
-
-        
-        public S3UploadRequest setStorageEncryption(String storageEncryption) {
-            if( storageEncryption == null) {
-                return this;
-            }
-            else if (storageEncryption != "AES256") {
-                log.warn("Not a valid S3 server-side encryption type: `{}` -- Currently only AES256 is supported",storageEncryption);
-            }
-            else {
-                ObjectMetadata objectMetadata = new ObjectMetadata();
-                objectMetadata.setSSEAlgorithm(ObjectMetadata.AES_256_SERVER_SIDE_ENCRYPTION);
-                this.setMetadata(objectMetadata);
-            }
-            return this;
-        }
-
-        public S3UploadRequest setMetadata(ObjectMetadata metadata) {
-            this.metadata = metadata;
-            return this;
-        }
-
-        public S3UploadRequest setChunkSize(int chunkSize) {
-            this.chunkSize = chunkSize;
-            return this;
-        }
-
-        public S3UploadRequest setChunkSize(String chunkSize) {
-            if( chunkSize==null ) return this;
-
-            try {
-                setChunkSize(Integer.parseInt(chunkSize));
-            }
-            catch( NumberFormatException e ) {
-                log.warn("Not a valid AWS S3 multipart upload chunk size: `{}` -- Using default", chunkSize);
-            }
-            return this;
-        }
-
-        public S3UploadRequest setMaxThreads(int maxThreads) {
-            this.maxThreads = maxThreads;
-            return this;
-        }
-
-        public S3UploadRequest setMaxThreads(String maxThreads) {
-            if( maxThreads==null ) return this;
-
-            try {
-                setMaxThreads(Integer.parseInt(maxThreads));
-            }
-            catch( NumberFormatException e ) {
-                log.warn("Not a valid AWS S3 multipart upload max threads: `{}` -- Using default", maxThreads);
-            }
-            return this;
-        }
-
-        public S3UploadRequest setMaxAttempts(int maxAttempts) {
-            this.maxAttempts = maxAttempts;
-            return this;
-        }
-
-        public S3UploadRequest setMaxAttempts(String maxAttempts) {
-            if( maxAttempts == null ) return this;
-            try {
-                this.maxAttempts = Integer.parseInt(maxAttempts);
-            }
-            catch(NumberFormatException e ) {
-                log.warn("Not a valid AWS S3 multipart upload max attempts value: `{}` -- Using default", maxAttempts);
-            }
-            return this;
-        }
-
-        public S3UploadRequest setRetrySleep( long retrySleep ) {
-            this.retrySleep = retrySleep;
-            return this;
-        }
-
-        public S3UploadRequest setRetrySleep( String retrySleep ) {
-            if( retrySleep == null ) return this;
-
-            try {
-                this.retrySleep = Long.parseLong(retrySleep);
-            }
-            catch (NumberFormatException e ) {
-                log.warn("Not a valid AWS S3 multipart upload retry sleep value: `{}` -- Using default", retrySleep);
-            }
-            return this;
-        }
-        
-    }
 
     /**
      * Hack a LinkedBlockingQueue to make the offer method blocking
@@ -262,13 +107,6 @@ public final class S3OutputStream extends OutputStream {
 
     private static final Logger log = LoggerFactory.getLogger(S3OutputStream.class);
 
-    /**
-     * Minimum part size of a part in a multipart upload: 5 MiB.
-     *
-     * @see  <a href="http://docs.aws.amazon.com/AmazonS3/latest/API/mpUploadUploadPart.html">Amazon Simple Storage
-     *       Service (S3) » API Reference » REST API » Operations on Objects » Upload Part</a>
-     */
-    private static final int DEFAULT_CHUNK_SIZE = 10 << 20;
 
     /**
      * Amazon S3 API implementation to use.
@@ -364,9 +202,9 @@ public final class S3OutputStream extends OutputStream {
      */
     public S3OutputStream(final AmazonS3 s3, S3UploadRequest request) {
         this.s3 = requireNonNull(s3);
-        this.objectId = requireNonNull(request.objectId);
-        this.metadata = request.metadata != null ? request.metadata : new ObjectMetadata();
-        this.storageClass = request.storageClass;
+        this.objectId = requireNonNull(request.getObjectId());
+        this.metadata = request.getMetadata() != null ? request.getMetadata() : new ObjectMetadata();
+        this.storageClass = request.getStorageClass();
         this.request = request;
         // initialize the buffer
         this.buf = allocate();
@@ -435,7 +273,7 @@ public final class S3OutputStream extends OutputStream {
      * @return The {@code ByteBuffer} instance
      */
     protected ByteBuffer allocate() {
-        return ByteBuffer.allocateDirect(request.chunkSize);
+        return ByteBuffer.allocateDirect(request.getChunkSize());
     }
 
     /**
@@ -467,11 +305,11 @@ public final class S3OutputStream extends OutputStream {
             throw new IOException("Failed to get a valid multipart upload ID from Amazon S3");
         }
         // create the executor
-        executor = createExecutor(request.maxThreads);
+        executor = getOrCreateExecutor(request.getMaxThreads());
         partETags = new LinkedBlockingQueue<>();
         phaser = new Phaser();
         phaser.register();
-        log.trace("Starting S3 upload: {}; chunk-size: {}; max-threads: {}", uploadId, request.chunkSize, request.maxThreads);
+        log.trace("Starting S3 upload: {}; chunk-size: {}; max-threads: {}", uploadId, request.getChunkSize(), request.getMaxThreads());
     }
 
 
@@ -585,11 +423,11 @@ public final class S3OutputStream extends OutputStream {
                     success=true;
                 }
                 catch (AmazonClientException | IOException e) {
-                    if( attempt == request.maxAttempts )
+                    if( attempt == request.getMaxAttempts() )
                         throw new IOException("Failed to upload multipart data to Amazon S3", e);
 
                     log.debug("Failed to upload part {} attempt {} for {} -- Caused by: {}", partNumber, attempt, objectId, e.getMessage());
-                    sleep(request.retrySleep);
+                    sleep(request.getRetrySleep());
                     buf.reset();
                 }
             }
@@ -730,7 +568,7 @@ public final class S3OutputStream extends OutputStream {
      *          NOTE: changing the size parameter after the first invocation has no effect.
      * @return The executor instance
      */
-    private static synchronized ExecutorService createExecutor(int maxThreads) {
+    static synchronized ExecutorService getOrCreateExecutor(int maxThreads) {
         if( executorSingleton == null ) {
             executorSingleton = new ThreadPoolExecutor(maxThreads, maxThreads, 60L, TimeUnit.SECONDS, new LimitedQueue<Runnable>(maxThreads));
             log.trace("Created singleton upload executor -- max-treads: {}", maxThreads);

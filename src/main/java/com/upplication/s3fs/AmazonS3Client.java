@@ -44,28 +44,46 @@
 
 package com.upplication.s3fs;
 
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionUtils;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AccessControlList;
 import com.amazonaws.services.s3.model.Bucket;
+import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
+import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.CopyObjectResult;
+import com.amazonaws.services.s3.model.CopyPartRequest;
+import com.amazonaws.services.s3.model.CopyPartResult;
+import com.amazonaws.services.s3.model.GetObjectMetadataRequest;
+import com.amazonaws.services.s3.model.InitiateMultipartUploadRequest;
+import com.amazonaws.services.s3.model.InitiateMultipartUploadResult;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.Owner;
+import com.amazonaws.services.s3.model.PartETag;
 import com.amazonaws.services.s3.model.PutObjectResult;
-import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+
 /**
  * Client Amazon S3
  * @see com.amazonaws.services.s3.AmazonS3Client
  */
 public class AmazonS3Client {
+
+	private static final Logger log = LoggerFactory.getLogger(AmazonS3Client.class);
 	
 	AmazonS3 client;
 	
@@ -168,4 +186,120 @@ public class AmazonS3Client {
     public ObjectListing listNextBatchOfObjects(ObjectListing objectListing) {
         return client.listNextBatchOfObjects(objectListing);
     }
+
+	public void multipartCopyObject(S3Path s3Source, S3Path s3Target, Long objectSize, S3MultipartOptions opts ) {
+
+		final String sourceBucketName = s3Source.getBucket();
+		final String sourceObjectKey = s3Source.getKey();
+		final String targetBucketName = s3Target.getBucket();
+		final String targetObjectKey = s3Target.getKey();
+
+
+		// Step 2: Initialize
+		InitiateMultipartUploadRequest initiateRequest =
+				new InitiateMultipartUploadRequest(targetBucketName, targetObjectKey);
+
+		InitiateMultipartUploadResult initResult = client.initiateMultipartUpload(initiateRequest);
+
+		// Step 3: Save upload Id.
+		String uploadId = initResult.getUploadId();
+
+		// Get object size.
+		if( objectSize == null ) {
+			GetObjectMetadataRequest metadataRequest = new GetObjectMetadataRequest(sourceBucketName, sourceObjectKey);
+			ObjectMetadata metadataResult = client.getObjectMetadata(metadataRequest);
+			objectSize = metadataResult.getContentLength(); // in bytes
+		}
+
+		final int partSize = opts.getChunkSize(objectSize);
+		ExecutorService executor = S3OutputStream.getOrCreateExecutor(opts.getMaxThreads());
+		List<Callable<CopyPartResult>> copyPartRequests = new ArrayList<>();
+
+		// Step 4. create copy part requests
+		long bytePosition = 0;
+		for (int i = 1; bytePosition < objectSize; i++)
+		{
+			long lastPosition = bytePosition + partSize -1 >= objectSize ? objectSize - 1 : bytePosition + partSize - 1;
+
+			CopyPartRequest copyRequest = new CopyPartRequest()
+					.withDestinationBucketName(targetBucketName)
+					.withDestinationKey(targetObjectKey)
+					.withSourceBucketName(sourceBucketName)
+					.withSourceKey(sourceObjectKey)
+					.withUploadId(uploadId)
+					.withFirstByte(bytePosition)
+					.withLastByte(lastPosition)
+					.withPartNumber(i);
+
+			copyPartRequests.add( copyPart(client, copyRequest, opts) );
+			bytePosition += partSize;
+		}
+
+		log.trace("Starting multipart copy from: {} to {} -- uploadId={}; objectSize={}; chunkSize={}; numOfChunks={}", s3Source, s3Target, uploadId, objectSize, partSize, copyPartRequests.size() );
+
+		List<PartETag> etags = new ArrayList<>();
+		List<Future<CopyPartResult>> responses;
+		try {
+			// Step 5. Start parallel parts copy
+			responses = executor.invokeAll(copyPartRequests);
+
+			// Step 6. Fetch all results
+			for (Future<CopyPartResult> response : responses) {
+				CopyPartResult result = response.get();
+				etags.add(new PartETag(result.getPartNumber(), result.getETag()));
+			}
+		}
+		catch( Exception e ) {
+			throw new IllegalStateException("Multipart copy reported an unexpected error -- uploadId=" + uploadId, e);
+		}
+
+		// Step 7. Complete copy operation
+		CompleteMultipartUploadRequest completeRequest = new
+				CompleteMultipartUploadRequest(
+				targetBucketName,
+				targetObjectKey,
+				initResult.getUploadId(),
+				etags);
+
+		log.trace("Completing multipart copy from: {} to {} -- uploadId={}", s3Source, s3Target, uploadId);
+		client.completeMultipartUpload(completeRequest);
+	}
+
+	static Callable<CopyPartResult> copyPart( final AmazonS3 client, final CopyPartRequest request, final S3MultipartOptions opts ) {
+		return new Callable<CopyPartResult>() {
+			@Override
+			public CopyPartResult call() throws Exception {
+				return copyPart0(client,request,opts);
+			}
+		};
+	}
+
+
+	static CopyPartResult copyPart0(AmazonS3 client, CopyPartRequest request, S3MultipartOptions opts) throws IOException, InterruptedException {
+
+		final String objectId = request.getUploadId();
+		final int partNumber = request.getPartNumber();
+		final long len = request.getLastByte() - request.getFirstByte();
+
+		int attempt=0;
+		CopyPartResult result=null;
+		while( result == null ) {
+			attempt++;
+			try {
+				log.trace("Copying multipart {} with length {} attempt {} for {} ", partNumber, len, attempt, objectId);
+				result = client.copyPart(request);
+			}
+			catch (AmazonClientException e) {
+				if( attempt >= opts.getMaxAttempts() )
+					throw new IOException("Failed to upload multipart data to Amazon S3", e);
+
+				log.debug("Failed to upload part {} attempt {} for {} -- Caused by: {}", partNumber, attempt, objectId, e.getMessage());
+
+				Thread.sleep(opts.getRetrySleepWithAttempt(attempt));
+			}
+		}
+
+		return result;
+	}
+
 }

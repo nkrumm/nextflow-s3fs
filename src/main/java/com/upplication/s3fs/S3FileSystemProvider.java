@@ -51,13 +51,12 @@ import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AccessControlList;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.CopyObjectRequest;
 import com.amazonaws.services.s3.model.Grant;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.Owner;
 import com.amazonaws.services.s3.model.Permission;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.services.s3.model.CopyObjectRequest;
-import com.amazonaws.services.s3.model.GetObjectMetadataRequest;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -328,15 +327,8 @@ public class S3FileSystemProvider extends FileSystemProvider {
 	private S3OutputStream createUploaderOutputStream( S3Path fileToUpload ) {
 		AmazonS3 s3 = fileToUpload.getFileSystem().getClient().client;
 
-		S3OutputStream.S3UploadRequest req = new S3OutputStream
-				.S3UploadRequest()
-				.setObjectId(fileToUpload.toS3ObjectId())
-				.setMaxThreads(props.getProperty("upload_max_threads"))
-				.setChunkSize(props.getProperty("upload_chunk_size"))
-				.setStorageClass(props.getProperty("upload_storage_class"))
-				.setMaxAttempts(props.getProperty("upload_max_attempts"))
-				.setRetrySleep(props.getProperty("upload_retry_sleep"))
-                .setStorageEncryption(props.getProperty("storage_encryption"));
+		S3UploadRequest req = new S3UploadRequest(props);
+		req.setObjectId(fileToUpload.toS3ObjectId());
 
 		return new S3OutputStream(s3,req);
 	}
@@ -529,17 +521,30 @@ public class S3FileSystemProvider extends FileSystemProvider {
 						"target already exists: %s", target));
 			}
 		}
-        CopyObjectRequest copyObjRequest = new CopyObjectRequest(s3Source.getBucket(), s3Source.getKey(),s3Target.getBucket(), s3Target.getKey());
-        ObjectMetadata sourceObjMetadata = s3Source.getFileSystem().getClient().getObjectMetadata(s3Source.getBucket(), s3Source.getKey());
-        if (sourceObjMetadata.getSSEAlgorithm()!= null) {
-            ObjectMetadata targetObjectMetadata = new ObjectMetadata();
-            targetObjectMetadata.setSSEAlgorithm(sourceObjMetadata.getSSEAlgorithm());
-            copyObjRequest.setNewObjectMetadata(targetObjectMetadata);
-        } 
-		s3Source.getFileSystem()
-				.getClient()
-				.copyObject(copyObjRequest);
+
+		AmazonS3Client client = s3Source.getFileSystem() .getClient();
+
+		final S3MultipartOptions opts = new S3MultipartOptions<>(props);
+        final ObjectMetadata sourceObjMetadata = s3Source.getFileSystem().getClient().getObjectMetadata(s3Source.getBucket(), s3Source.getKey());
+		final int chunkSize = opts.getChunkSize();
+		final long length = sourceObjMetadata.getContentLength();
+
+		if( length <= chunkSize ) {
+
+			CopyObjectRequest copyObjRequest = new CopyObjectRequest(s3Source.getBucket(), s3Source.getKey(),s3Target.getBucket(), s3Target.getKey());
+			if (sourceObjMetadata.getSSEAlgorithm()!= null) {
+				ObjectMetadata targetObjectMetadata = new ObjectMetadata();
+				targetObjectMetadata.setSSEAlgorithm(sourceObjMetadata.getSSEAlgorithm());
+				copyObjRequest.setNewObjectMetadata(targetObjectMetadata);
+			}
+
+			client.copyObject(copyObjRequest);
+		}
+		else {
+		 	client.multipartCopyObject(s3Source, s3Target, length, opts);
+		}
 	}
+
 
 	@Override
 	public void move(Path source, Path target, CopyOption... options)
