@@ -34,7 +34,7 @@ apply plugin: 'signing'
 apply plugin: 'io.codearte.nexus-staging'
 
 group = 'io.nextflow'
-version = '1.0.1'
+version = '1.0.3-SNAPSHOT'
 
 targetCompatibility=1.7
 sourceCompatibility=1.7
@@ -50,7 +50,7 @@ repositories {
 dependencies {
     // The production code uses the SLF4J logging API at compile time
     compile ('org.slf4j:slf4j-api:1.7.10')
-    compile ('com.amazonaws:aws-java-sdk-s3:1.9.4') { exclude group: 'commons-logging', module: 'commons-logging' }
+    compile ('com.amazonaws:aws-java-sdk-s3:1.11.172') { exclude group: 'commons-logging', module: 'commons-logging' }
     compile ('com.google.guava:guava:11.0.1')
     compile ('org.apache.tika:tika-core:1.5')
 

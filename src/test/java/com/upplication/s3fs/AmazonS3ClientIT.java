@@ -50,6 +50,7 @@ import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.PutObjectResult;
 import com.upplication.s3fs.util.EnvironmentBuilder;
+import com.upplication.s3fs.util.S3MultipartOptions;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -59,14 +60,20 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
 
 import static com.upplication.s3fs.util.EnvironmentBuilder.getRealEnv;
 import static java.util.UUID.randomUUID;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.spy;
 
 public class AmazonS3ClientIT {
 	
 	AmazonS3Client client;
+
+	private static int _1MB = 1024 * 1024;
 	
 	@Before
 	public void setup() throws IOException{
@@ -125,7 +132,43 @@ public class AmazonS3ClientIT {
 	
 		assertNotNull(result);
 	}
-	
+
+	static byte[] randomBytes(int length) {
+		byte[] result = new byte[length];
+		new Random().nextBytes(result);
+		return result;
+	}
+
+	@Test
+	public void multipartCopyObject() throws IOException {
+
+		final String bucket = EnvironmentBuilder.getBucket();
+
+		/*
+         * since it uploads 17 MG and upload chunk size is 5 MB ==> 4 parts
+         */
+		byte[] payload = randomBytes(17 * _1MB);
+		String sourceName = UUID.randomUUID().toString();
+
+		S3FileSystemProvider provider = spy(new S3FileSystemProvider());
+		S3FileSystem fs = spy(new S3FileSystem(provider, client, ""));
+		S3Path source = new S3Path(fs, bucket, sourceName);
+		S3Path target = new S3Path(fs, bucket, sourceName + "_copy");
+
+		// -- upload to set
+		Files.copy( new ByteArrayInputStream(payload), source );
+
+		S3MultipartOptions opts = new S3MultipartOptions();
+		opts.setChunkSize(5 * _1MB);
+
+		// -- copy to target name
+		client.multipartCopyObject(source,target,null,opts);
+
+		// read the file
+		byte[] copy = Files.readAllBytes(target);
+		assertArrayEquals(payload, copy);
+	}
+
 	private String getBucket() {
 		return EnvironmentBuilder.getBucket().replace("/", "");
 	}

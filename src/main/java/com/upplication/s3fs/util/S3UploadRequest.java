@@ -18,7 +18,7 @@
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.upplication.s3fs;
+package com.upplication.s3fs.util;
 
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3ObjectId;
@@ -31,7 +31,7 @@ import java.util.Properties;
 /**
  * Model a S3 multipart upload request
  */
-class S3UploadRequest extends S3MultipartOptions<S3UploadRequest> {
+public class S3UploadRequest extends S3MultipartOptions<S3UploadRequest> {
 
     private static final Logger log = LoggerFactory.getLogger(S3UploadRequest.class);
 
@@ -52,11 +52,11 @@ class S3UploadRequest extends S3MultipartOptions<S3UploadRequest> {
 
 
 
-    S3UploadRequest() {
+    public S3UploadRequest() {
 
     }
 
-    S3UploadRequest(Properties props) {
+    public S3UploadRequest(Properties props) {
         super(props);
         setStorageClass(props.getProperty("upload_storage_class"));
         setStorageEncryption(props.getProperty("storage_encryption"));
@@ -118,5 +118,11 @@ class S3UploadRequest extends S3MultipartOptions<S3UploadRequest> {
         return this;
     }
 
+    public String toString() {
+        return "objectId=" + objectId +
+                "storageClass=" + storageClass +
+                "metadata=" + metadata +
+                super.toString();
+    }
 
 }

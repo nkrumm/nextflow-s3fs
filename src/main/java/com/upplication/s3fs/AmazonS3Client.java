@@ -65,6 +65,7 @@ import com.amazonaws.services.s3.model.Owner;
 import com.amazonaws.services.s3.model.PartETag;
 import com.amazonaws.services.s3.model.PutObjectResult;
 import com.amazonaws.services.s3.model.S3Object;
+import com.upplication.s3fs.util.S3MultipartOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -261,7 +262,7 @@ public class AmazonS3Client {
 				initResult.getUploadId(),
 				etags);
 
-		log.trace("Completing multipart copy from: {} to {} -- uploadId={}", s3Source, s3Target, uploadId);
+		log.trace("Completing multipart copy uploadId={}", uploadId);
 		client.completeMultipartUpload(completeRequest);
 	}
 
@@ -294,7 +295,6 @@ public class AmazonS3Client {
 					throw new IOException("Failed to upload multipart data to Amazon S3", e);
 
 				log.debug("Failed to upload part {} attempt {} for {} -- Caused by: {}", partNumber, attempt, objectId, e.getMessage());
-
 				Thread.sleep(opts.getRetrySleepWithAttempt(attempt));
 			}
 		}

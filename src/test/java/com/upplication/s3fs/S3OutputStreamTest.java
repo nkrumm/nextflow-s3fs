@@ -20,7 +20,9 @@
 
 package com.upplication.s3fs;
 
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.upplication.s3fs.util.EnvironmentBuilder;
+import com.upplication.s3fs.util.S3UploadRequest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -36,9 +38,8 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.util.Random;
 import java.util.UUID;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
+
+import static org.junit.Assert.*;
 
 
 /**
@@ -138,8 +139,7 @@ public class S3OutputStreamTest {
         S3Path path = (S3Path) s3FileSystem.getPath(bucket, UUID.randomUUID().toString());
 
         // create the upload request
-        S3OutputStream.S3UploadRequest req = new S3OutputStream
-                .S3UploadRequest()
+        S3UploadRequest req = new S3UploadRequest()
                 .setChunkSize(5 * _1MB)
                 .setObjectId(path.toS3ObjectId());
         S3OutputStream out = new S3OutputStream(s3FileSystem.getClient().client, req);
@@ -162,10 +162,9 @@ public class S3OutputStreamTest {
         String objectKey = UUID.randomUUID().toString();
 
         S3Path path = (S3Path) s3FileSystem.getPath(bucket, objectKey);
-        S3OutputStream.S3UploadRequest req = new S3OutputStream
-                .S3UploadRequest()
-                .setObjectId(path.toS3ObjectId())
-                .setStorageEncryption("AES256");
+        S3UploadRequest req = new S3UploadRequest()
+                                .setObjectId(path.toS3ObjectId())
+                                .setStorageEncryption("AES256");
         S3OutputStream out = new S3OutputStream(s3FileSystem.getClient().client, req);
         copy(payload, out);
         out.close();
@@ -194,10 +193,9 @@ public class S3OutputStreamTest {
         S3Path path = (S3Path) s3FileSystem.getPath(bucket, UUID.randomUUID().toString());
 
         // create the upload request
-        S3OutputStream.S3UploadRequest req = new S3OutputStream
-                .S3UploadRequest()
-                .setChunkSize(5 * _1MB)
-                .setObjectId(path.toS3ObjectId());
+        S3UploadRequest req = new S3UploadRequest()
+                                .setChunkSize(5 * _1MB)
+                                .setObjectId(path.toS3ObjectId());
         S3OutputStream out = new S3OutputStream(s3FileSystem.getClient().client, req);
 
         copy(payload, out);
@@ -224,10 +222,9 @@ public class S3OutputStreamTest {
         S3Path path = (S3Path) s3FileSystem.getPath(bucket, UUID.randomUUID().toString());
 
         // create the upload request
-        S3OutputStream.S3UploadRequest req = new S3OutputStream
-                .S3UploadRequest()
-                .setChunkSize(5 * _1MB)
-                .setObjectId(path.toS3ObjectId());
+        S3UploadRequest req = new S3UploadRequest()
+                                    .setChunkSize(5 * _1MB)
+                                    .setObjectId(path.toS3ObjectId());
         S3OutputStream out = new S3OutputStream(s3FileSystem.getClient().client, req);
         out.flush();
         copy(payload, out);
@@ -241,4 +238,6 @@ public class S3OutputStreamTest {
         assertArrayEquals(payload, copy);
         assertEquals(2, out.getPartsCount());
     }
+
+
 }

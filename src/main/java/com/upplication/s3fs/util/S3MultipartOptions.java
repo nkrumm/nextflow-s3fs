@@ -18,7 +18,7 @@
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.upplication.s3fs;
+package com.upplication.s3fs.util;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,11 +69,11 @@ public class S3MultipartOptions<V extends S3MultipartOptions> {
         }
     }
 
-    S3MultipartOptions() {
+    public S3MultipartOptions() {
 
     }
 
-    S3MultipartOptions(Properties props) {
+    public S3MultipartOptions(Properties props) {
         setMaxThreads(props.getProperty("upload_max_threads"));
         setChunkSize(props.getProperty("upload_chunk_size"));
         setMaxAttempts(props.getProperty("upload_max_attempts"));
@@ -181,6 +181,14 @@ public class S3MultipartOptions<V extends S3MultipartOptions> {
 
     public long getRetrySleepWithAttempt( int attempt ) {
         return retrySleep * ( 1 << (attempt-1) );
+    }
+
+    @Override
+    public String toString() {
+        return "chunkSize=" + chunkSize +
+                "; maxThreads=" + maxThreads +
+                "; maxAttempts=" + maxAttempts +
+                "; retrySleep=" + retrySleep;
     }
 
 }

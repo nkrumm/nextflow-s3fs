@@ -62,7 +62,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.upplication.s3fs.util.IOUtils;
+import com.upplication.s3fs.util.S3MultipartOptions;
 import com.upplication.s3fs.util.S3ObjectSummaryLookup;
+import com.upplication.s3fs.util.S3UploadRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -327,7 +329,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
 	private S3OutputStream createUploaderOutputStream( S3Path fileToUpload ) {
 		AmazonS3 s3 = fileToUpload.getFileSystem().getClient().client;
 
-		S3UploadRequest req = new S3UploadRequest(props);
+		S3UploadRequest req = props != null ? new S3UploadRequest(props) : new S3UploadRequest();
 		req.setObjectId(fileToUpload.toS3ObjectId());
 
 		return new S3OutputStream(s3,req);
@@ -524,8 +526,8 @@ public class S3FileSystemProvider extends FileSystemProvider {
 
 		AmazonS3Client client = s3Source.getFileSystem() .getClient();
 
-		final S3MultipartOptions opts = new S3MultipartOptions<>(props);
         final ObjectMetadata sourceObjMetadata = s3Source.getFileSystem().getClient().getObjectMetadata(s3Source.getBucket(), s3Source.getKey());
+		final S3MultipartOptions opts = props != null ? new S3MultipartOptions<>(props) : new S3MultipartOptions();
 		final int chunkSize = opts.getChunkSize();
 		final long length = sourceObjMetadata.getContentLength();
 

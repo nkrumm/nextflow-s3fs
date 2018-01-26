@@ -34,6 +34,7 @@ import com.amazonaws.services.s3.model.StorageClass;
 import com.amazonaws.services.s3.model.UploadPartRequest;
 import com.amazonaws.util.Base64;
 import com.upplication.s3fs.util.ByteBufferInputStream;
+import com.upplication.s3fs.util.S3UploadRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sun.nio.ch.DirectBuffer;
@@ -66,16 +67,6 @@ import static java.util.Objects.requireNonNull;
  */
 
 public final class S3OutputStream extends OutputStream {
-
-    /**
-     * Minimum part size of a part in a multipart upload: 20 MiB.
-     *
-     * @see  <a href="http://docs.aws.amazon.com/AmazonS3/latest/API/mpUploadUploadPart.html">Amazon Simple Storage
-     *       Service (S3) » API Reference » REST API » Operations on Objects » Upload Part</a>
-     */
-    @Deprecated
-    public static final int DEFAULT_CHUNK_SIZE = 20 << 20;
-
 
     /**
      * Hack a LinkedBlockingQueue to make the offer method blocking
@@ -196,7 +187,7 @@ public final class S3OutputStream extends OutputStream {
      * No special object metadata or storage class will be attached to the object.
      *
      * @param   s3        Amazon S3 API implementation to use
-     * @param   request   An instance of {@link com.upplication.s3fs.S3OutputStream.S3UploadRequest}
+     * @param   request   An instance of {@link S3UploadRequest}
      *
      * @throws  NullPointerException  if at least one parameter is {@code null}
      */
