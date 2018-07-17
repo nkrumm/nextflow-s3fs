@@ -20,13 +20,9 @@
 
 package com.upplication.s3fs;
 
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.upplication.s3fs.util.EnvironmentBuilder;
-import com.upplication.s3fs.util.S3UploadRequest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,7 +35,11 @@ import java.nio.file.Files;
 import java.util.Random;
 import java.util.UUID;
 
-import static org.junit.Assert.*;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.upplication.s3fs.util.EnvironmentBuilder;
+import com.upplication.s3fs.util.S3UploadRequest;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 
 /**
@@ -50,6 +50,7 @@ public class S3OutputStreamTest {
     private static final URI uri = URI.create("s3:///");
     private static final String bucket = EnvironmentBuilder.getBucket();
     private static int _1MB = 1024 * 1024;
+    private static int _1KB = 1024;
 
     private S3FileSystem s3FileSystem;
 
@@ -105,6 +106,22 @@ public class S3OutputStreamTest {
     }
 
     @Test
+    public void testEmptyFileUpload() throws IOException {
+        // create a random S3 path
+        S3Path path = (S3Path) s3FileSystem.getPath(bucket, UUID.randomUUID().toString());
+        S3OutputStream out = new S3OutputStream(s3FileSystem.getClient().client, path.toS3ObjectId());
+
+        final byte[] EMPTY = new byte[] {};
+        copy(EMPTY, out);
+        out.close();
+
+        // read the file
+        byte[] copy = Files.readAllBytes(path);
+
+        assertEquals(0, copy.length);
+    }
+
+    @Test
     public void testSmallUpload() throws IOException {
 
         // random string
@@ -124,6 +141,24 @@ public class S3OutputStreamTest {
         assertEquals(str, copy);
     }
 
+    @Test
+    public void testMediumUpload() throws IOException {
+
+        byte[] payload = randomBytes(100 * _1KB);
+
+        // create a random S3 path
+        S3Path path = (S3Path) s3FileSystem.getPath(bucket, UUID.randomUUID().toString());
+        S3OutputStream out = new S3OutputStream(s3FileSystem.getClient().client, path.toS3ObjectId());
+
+        copy(payload, out);
+        out.close();
+
+        // read the file
+        byte[] copy = Files.readAllBytes(path);
+
+        assertEquals(0, out.getPartsCount());
+        assertArrayEquals(payload, copy);
+    }
 
     @Test
     public void testMultipartUploadTwoChunks() throws IOException {
@@ -211,7 +246,7 @@ public class S3OutputStreamTest {
     @Test
     public void testMultipartUploadManyFlushes() throws IOException {
 
-        /**
+        /*
          * Verifies that multipart multipart upload works correctly when the payload
          * is exactly a multiple of the upload chunk size
          */

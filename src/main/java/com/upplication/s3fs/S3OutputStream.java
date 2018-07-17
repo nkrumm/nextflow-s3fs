@@ -20,25 +20,7 @@
 
 package com.upplication.s3fs;
 
-import com.amazonaws.AmazonClientException;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.AbortMultipartUploadRequest;
-import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
-import com.amazonaws.services.s3.model.InitiateMultipartUploadRequest;
-import com.amazonaws.services.s3.model.InitiateMultipartUploadResult;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PartETag;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3ObjectId;
-import com.amazonaws.services.s3.model.StorageClass;
-import com.amazonaws.services.s3.model.UploadPartRequest;
-import com.amazonaws.util.Base64;
-import com.upplication.s3fs.util.ByteBufferInputStream;
-import com.upplication.s3fs.util.S3UploadRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import sun.nio.ch.DirectBuffer;
-
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -56,6 +38,23 @@ import java.util.concurrent.Phaser;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import com.amazonaws.AmazonClientException;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.AbortMultipartUploadRequest;
+import com.amazonaws.services.s3.model.CompleteMultipartUploadRequest;
+import com.amazonaws.services.s3.model.InitiateMultipartUploadRequest;
+import com.amazonaws.services.s3.model.InitiateMultipartUploadResult;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.PartETag;
+import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.S3ObjectId;
+import com.amazonaws.services.s3.model.StorageClass;
+import com.amazonaws.services.s3.model.UploadPartRequest;
+import com.amazonaws.util.Base64;
+import com.upplication.s3fs.util.ByteBufferInputStream;
+import com.upplication.s3fs.util.S3UploadRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -172,6 +171,7 @@ public final class S3OutputStream extends OutputStream {
      */
     private int partsCount;
 
+    private int chunkSize;
 
     /**
      * Creates a s3 uploader output stream
@@ -197,9 +197,19 @@ public final class S3OutputStream extends OutputStream {
         this.metadata = request.getMetadata() != null ? request.getMetadata() : new ObjectMetadata();
         this.storageClass = request.getStorageClass();
         this.request = request;
-        // initialize the buffer
-        this.buf = allocate();
-        this.md5 = createMd5();
+        this.chunkSize = request.getChunkSize();
+    }
+
+    private ByteBuffer expandBuffer(ByteBuffer byteBuffer) {
+        
+        final float expandFactor = 2.5f;
+        final int newCapacity = Math.min( (int)(byteBuffer.capacity() * expandFactor), chunkSize );
+
+        byteBuffer.flip();
+        ByteBuffer expanded = ByteBuffer.allocate(newCapacity);
+        expanded.order(byteBuffer.order());
+        expanded.put(byteBuffer);
+        return expanded;
     }
 
 
@@ -225,8 +235,20 @@ public final class S3OutputStream extends OutputStream {
      */
     @Override
     public void write (int b) throws IOException {
-        if (!buf.hasRemaining()) {
-            flush();
+        if( buf == null ) {
+            buf = allocate();
+            md5 = createMd5();
+        }
+        else if( !buf.hasRemaining() ) {
+            if( buf.position() < chunkSize ) {
+                buf = expandBuffer(buf);
+            }
+            else {
+                flush();
+                // create a new buffer
+                buf = allocate();
+                md5 = createMd5();
+            }
         }
 
         buf.put((byte) b);
@@ -243,29 +265,30 @@ public final class S3OutputStream extends OutputStream {
     public void flush() throws IOException {
         // send out the current current
         uploadBuffer(buf);
+        // clear the current buffer
+        buf = null;
+        md5 = null;
+    }
+
+    private ByteBuffer allocate() {
+
+        if( partsCount==0 ) {
+            return ByteBuffer.allocate(10 * 1024);
+        }
 
         // try to reuse a buffer from the poll
-        buf = bufferPool.poll();
-        if( buf != null ) {
-            buf.clear();
+        ByteBuffer result = bufferPool.poll();
+        if( result != null ) {
+            result.clear();
         }
         else {
             // allocate a new buffer
-            buf = allocate();
+            result = ByteBuffer.allocateDirect(request.getChunkSize());
         }
 
-        md5 = createMd5();
+        return result;
     }
 
-    /**
-     * Create a new byte buffer to hold parallel chunks uploads. Override to use custom
-     * buffer capacity or strategy e.g. {@code DirectBuffer}
-     *
-     * @return The {@code ByteBuffer} instance
-     */
-    protected ByteBuffer allocate() {
-        return ByteBuffer.allocateDirect(request.getChunkSize());
-    }
 
     /**
      * Upload the given buffer to S3 storage in a asynchronous manner.
@@ -346,24 +369,22 @@ public final class S3OutputStream extends OutputStream {
         }
 
         if (uploadId == null) {
-            putObject(buf, md5.digest());
+            if( buf != null )
+                putObject(buf, md5.digest());
+            else
+                // this is needed when trying to upload an empty 
+                putObject(new ByteArrayInputStream(new byte[]{}), 0, createMd5().digest());
         }
         else {
             // -- upload remaining chunk
-            uploadBuffer(buf);
+            if( buf != null )
+                uploadBuffer(buf);
 
             // -- shutdown upload executor and await termination
             phaser.arriveAndAwaitAdvance();
 
             // -- complete upload process
             completeMultipartUpload();
-
-            // -- dispose the buffers
-            for( ByteBuffer item : bufferPool ) {
-                if( item instanceof DirectBuffer) {
-                    ((DirectBuffer) item).cleaner().clean();
-                }
-            }
         }
 
         closed = true;
@@ -511,7 +532,7 @@ public final class S3OutputStream extends OutputStream {
      */
     private void putObject(ByteBuffer buf, byte[] checksum) throws IOException {
         buf.flip();
-        putObject(buf.limit(), new ByteBufferInputStream(buf), checksum);
+        putObject(new ByteBufferInputStream(buf), buf.limit(), checksum);
     }
 
     /**
@@ -521,7 +542,7 @@ public final class S3OutputStream extends OutputStream {
      * @param content
      * @throws IOException
      */
-    private void putObject(final long contentLength, final InputStream content, byte[] checksum) throws IOException {
+    private void putObject(final InputStream content, final long contentLength, byte[] checksum) throws IOException {
 
         final ObjectMetadata meta = metadata.clone();
         meta.setContentLength(contentLength);
