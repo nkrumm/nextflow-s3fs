@@ -44,6 +44,10 @@
 
 package com.upplication.s3fs.util;
 
+import java.io.IOException;
+import java.nio.file.NoSuchFileException;
+import java.util.List;
+
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.ListObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
@@ -54,10 +58,6 @@ import com.upplication.s3fs.AmazonS3Client;
 import com.upplication.s3fs.S3Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.nio.file.NoSuchFileException;
-import java.util.List;
 
 public class S3ObjectSummaryLookup {
 
@@ -85,11 +85,10 @@ public class S3ObjectSummaryLookup {
          * when `key` is an empty string retrieve the object meta-data of the bucket
          */
         if( "".equals(s3Path.getKey()) ) {
-            S3Object obj = getS3Object(s3Path.getBucket(), "", client);
-            if( obj == null )
+            ObjectMetadata meta = client.getObjectMetadata(s3Path.getBucket(), "");
+            if( meta == null )
                 throw new NoSuchFileException("s3://" + s3Path.getBucket());
 
-            ObjectMetadata meta = obj.getObjectMetadata();
             summary = new S3ObjectSummary();
             summary.setBucketName(s3Path.getBucket());
             summary.setETag(meta.getETag());
