@@ -582,7 +582,15 @@ public final class S3OutputStream extends OutputStream {
      */
     static synchronized ExecutorService getOrCreateExecutor(int maxThreads) {
         if( executorSingleton == null ) {
-            executorSingleton = new ThreadPoolExecutor(maxThreads, maxThreads, 60L, TimeUnit.SECONDS, new LimitedQueue<Runnable>(maxThreads));
+            ThreadPoolExecutor pool = new ThreadPoolExecutor(
+                    maxThreads,
+                    Integer.MAX_VALUE,
+                    60L, TimeUnit.SECONDS,
+                    new LimitedQueue<Runnable>(maxThreads *3),
+                    new ThreadPoolExecutor.CallerRunsPolicy() );
+
+            pool.allowCoreThreadTimeOut(true);
+            executorSingleton = pool;
             log.trace("Created singleton upload executor -- max-treads: {}", maxThreads);
         }
         return executorSingleton;

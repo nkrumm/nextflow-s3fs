@@ -20,10 +20,10 @@
 
 package com.upplication.s3fs.util;
 
+import java.util.Properties;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.Properties;
 
 /**
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
@@ -63,10 +63,7 @@ public class S3MultipartOptions<V extends S3MultipartOptions> {
         retrySleep = 500;
         chunkSize = DEFAULT_CHUNK_SIZE;
         maxAttempts = 5;
-        maxThreads = Runtime.getRuntime().availableProcessors();
-        if( maxThreads > 1 ) {
-            maxThreads--;
-        }
+        maxThreads = Runtime.getRuntime().availableProcessors() *3;
     }
 
     public S3MultipartOptions() {
