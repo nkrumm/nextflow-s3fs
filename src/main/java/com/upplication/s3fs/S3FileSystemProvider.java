@@ -48,6 +48,7 @@ import com.amazonaws.ClientConfiguration;
 import com.amazonaws.Protocol;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.AccessControlList;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
@@ -144,6 +145,8 @@ public class S3FileSystemProvider extends FileSystemProvider {
             ACCESS_KEY = "access_key";
 	public static final String SECRET_KEY = "secret_key";
 
+	public static final String SESSION_KEY = "session_key";
+
 	final AtomicReference<S3FileSystem> fileSystem = new AtomicReference<>();
 
     private final S3ObjectSummaryLookup s3ObjectSummaryLookup = new S3ObjectSummaryLookup();
@@ -165,6 +168,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		props = loadAmazonProperties();
 		Object accessKey = props.getProperty(ACCESS_KEY);
 		Object secretKey = props.getProperty(SECRET_KEY);
+		Object sessionKey = props.getProperty(SESSION_KEY);
 		// but can overload by envs vars
 		if (env.get(ACCESS_KEY) != null){
 			accessKey = env.get(ACCESS_KEY);
@@ -172,16 +176,25 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		if (env.get(SECRET_KEY) != null){
 			secretKey = env.get(SECRET_KEY);
 		}
+		if (env.get(SESSION_KEY) != null){
+			sessionKey = env.get(SESSION_KEY);
+		}
 
 		// allows the env variables to override the ones in the property file
 		props.putAll(env);
 
-		Preconditions.checkArgument((accessKey == null && secretKey == null)
+		Preconditions.checkArgument((accessKey == null && secretKey == null && sessionKey == null)
 				|| (accessKey != null && secretKey != null),
-				"%s and %s should both be provided or should both be omitted",
-				ACCESS_KEY, SECRET_KEY);
+				"%s and %s (and optionally %s) should be provided or should be omitted",
+				ACCESS_KEY, SECRET_KEY, SESSION_KEY);
 
-		S3FileSystem result = createFileSystem(uri, accessKey, secretKey);
+		S3FileSystem result;
+		if (sessionKey != null){
+			result = createFileSystem(uri, accessKey, secretKey, sessionKey);
+		} else {
+			result = createFileSystem(uri, accessKey, secretKey);
+		}
+
 		// if this instance already has a S3FileSystem, throw exception
 		// otherwise set
 		if (!fileSystem.compareAndSet(null, result)) {
@@ -775,16 +788,31 @@ public class S3FileSystemProvider extends FileSystemProvider {
 	 * @param uri URI
 	 * @param accessKey Object maybe null for anonymous authentication
 	 * @param secretKey Object maybe null for anonymous authentication
+	 * @param sessionKey Object maybe null for anonymous authentication
 	 * @return S3FileSystem never null
 	 */
+
 	protected S3FileSystem createFileSystem(URI uri, Object accessKey, Object secretKey) {
+		return createFileSystem0(uri, accessKey, secretKey, null);
+	}
+
+	protected S3FileSystem createFileSystem(URI uri, Object accessKey, Object secretKey, Object sessionKey) {
+		return createFileSystem0(uri, accessKey, secretKey, sessionKey);
+	}
+
+	protected S3FileSystem createFileSystem0(URI uri, Object accessKey, Object secretKey, Object sessionKey) {
 		AmazonS3Client client;
 		ClientConfiguration config = createClientConfig(props);
-
-		if (accessKey == null && secretKey == null) {
+		AWSCredentials credentials;
+		if (accessKey == null && secretKey == null && sessionKey == null) {
 			client = new AmazonS3Client(new com.amazonaws.services.s3.AmazonS3Client(config));
 		} else {
-			AWSCredentials credentials = new BasicAWSCredentials(accessKey.toString(), secretKey.toString());
+			
+			if (sessionKey == null) {
+				credentials = new BasicAWSCredentials(accessKey.toString(), secretKey.toString());
+			} else {
+				credentials = new BasicSessionCredentials(accessKey.toString(), secretKey.toString(), sessionKey.toString());
+			}
 			client = new AmazonS3Client(new com.amazonaws.services.s3.AmazonS3Client(credentials,config));
 		}
 
