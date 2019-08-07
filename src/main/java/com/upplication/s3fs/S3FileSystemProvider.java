@@ -141,11 +141,10 @@ public class S3FileSystemProvider extends FileSystemProvider {
 
 	private static Logger log = LoggerFactory.getLogger(S3FileSystemProvider.class);
 
-	public static final String
-            ACCESS_KEY = "access_key";
+	public static final String ACCESS_KEY = "access_key";
 	public static final String SECRET_KEY = "secret_key";
 
-	public static final String SESSION_KEY = "session_key";
+	public static final String SESSION_TOKEN = "session_token";
 
 	final AtomicReference<S3FileSystem> fileSystem = new AtomicReference<>();
 
@@ -168,7 +167,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		props = loadAmazonProperties();
 		Object accessKey = props.getProperty(ACCESS_KEY);
 		Object secretKey = props.getProperty(SECRET_KEY);
-		Object sessionKey = props.getProperty(SESSION_KEY);
+		Object sessionToken = props.getProperty(SESSION_TOKEN);
 		// but can overload by envs vars
 		if (env.get(ACCESS_KEY) != null){
 			accessKey = env.get(ACCESS_KEY);
@@ -176,21 +175,21 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		if (env.get(SECRET_KEY) != null){
 			secretKey = env.get(SECRET_KEY);
 		}
-		if (env.get(SESSION_KEY) != null){
-			sessionKey = env.get(SESSION_KEY);
+		if (env.get(SESSION_TOKEN) != null){
+			sessionToken = env.get(SESSION_TOKEN);
 		}
 
 		// allows the env variables to override the ones in the property file
 		props.putAll(env);
 
-		Preconditions.checkArgument((accessKey == null && secretKey == null && sessionKey == null)
+		Preconditions.checkArgument((accessKey == null && secretKey == null && sessionToken == null)
 				|| (accessKey != null && secretKey != null),
 				"%s and %s (and optionally %s) should be provided or should be omitted",
-				ACCESS_KEY, SECRET_KEY, SESSION_KEY);
+				ACCESS_KEY, SECRET_KEY, SESSION_TOKEN);
 
 		S3FileSystem result;
-		if (sessionKey != null){
-			result = createFileSystem(uri, accessKey, secretKey, sessionKey);
+		if (sessionToken != null){
+			result = createFileSystem(uri, accessKey, secretKey, sessionToken);
 		} else {
 			result = createFileSystem(uri, accessKey, secretKey);
 		}
@@ -788,7 +787,7 @@ public class S3FileSystemProvider extends FileSystemProvider {
 	 * @param uri URI
 	 * @param accessKey Object maybe null for anonymous authentication
 	 * @param secretKey Object maybe null for anonymous authentication
-	 * @param sessionKey Object maybe null for anonymous authentication
+	 * @param sessionToken Object maybe null for anonymous authentication
 	 * @return S3FileSystem never null
 	 */
 
@@ -796,22 +795,22 @@ public class S3FileSystemProvider extends FileSystemProvider {
 		return createFileSystem0(uri, accessKey, secretKey, null);
 	}
 
-	protected S3FileSystem createFileSystem(URI uri, Object accessKey, Object secretKey, Object sessionKey) {
-		return createFileSystem0(uri, accessKey, secretKey, sessionKey);
+	protected S3FileSystem createFileSystem(URI uri, Object accessKey, Object secretKey, Object sessionToken) {
+		return createFileSystem0(uri, accessKey, secretKey, sessionToken);
 	}
 
-	protected S3FileSystem createFileSystem0(URI uri, Object accessKey, Object secretKey, Object sessionKey) {
+	protected S3FileSystem createFileSystem0(URI uri, Object accessKey, Object secretKey, Object sessionToken) {
 		AmazonS3Client client;
 		ClientConfiguration config = createClientConfig(props);
 		AWSCredentials credentials;
-		if (accessKey == null && secretKey == null && sessionKey == null) {
+		if (accessKey == null && secretKey == null && sessionToken == null) {
 			client = new AmazonS3Client(new com.amazonaws.services.s3.AmazonS3Client(config));
 		} else {
 			
-			if (sessionKey == null) {
+			if (sessionToken == null) {
 				credentials = new BasicAWSCredentials(accessKey.toString(), secretKey.toString());
 			} else {
-				credentials = new BasicSessionCredentials(accessKey.toString(), secretKey.toString(), sessionKey.toString());
+				credentials = new BasicSessionCredentials(accessKey.toString(), secretKey.toString(), sessionToken.toString());
 			}
 			client = new AmazonS3Client(new com.amazonaws.services.s3.AmazonS3Client(credentials,config));
 		}
